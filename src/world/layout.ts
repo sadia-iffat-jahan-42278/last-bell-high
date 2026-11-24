@@ -1,5 +1,5 @@
 // Campus layout: pure data shared by the 3D scene, collisions, minimap and game rules.
-import type { NpcId, ZoneId } from '../core/types';
+import { NPC_IDS, type NpcId, type ZoneId } from '../core/types';
 
 export interface Point {
   x: number;
@@ -34,7 +34,7 @@ export const PLAZA = { x: 0, z: 6, r: 14 };
 export const BUILDINGS: Building[] = [
   {
     id: 'main',
-    name: 'Main Building',
+    name: 'Hale Hall',
     icon: '🏫',
     cx: 0,
     cz: -30,
@@ -79,7 +79,7 @@ export const BUILDINGS: Building[] = [
   },
   {
     id: 'lab',
-    name: 'Science Lab',
+    name: 'Science Labs',
     icon: '🧪',
     cx: -32,
     cz: 14,
@@ -94,7 +94,7 @@ export const BUILDINGS: Building[] = [
   },
   {
     id: 'music',
-    name: 'Music Room',
+    name: 'Music Hall',
     icon: '🎵',
     cx: 32,
     cz: 14,
@@ -135,13 +135,30 @@ ZONES.gate = { x: 0, z: 44 };
 ZONES.notice = { x: NOTICE.x, z: NOTICE.z + 2.2 };
 
 type XZ = [number, number];
-/** Friends' standing spots at lunch and after school. */
-export const HANGOUTS: Record<NpcId, { lunch: XZ; after: XZ }> = {
-  maya: { lunch: [-7.5, 9.5], after: [-21.5, -4.8] },
-  kai: { lunch: [21.5, -4.8], after: [21.5, 34.8] },
-  zoe: { lunch: [7.5, 9.5], after: [21.8, 17.5] },
-  rin: { lunch: [5.5, -19.5], after: [-21.8, 17.5] },
-};
+/** Sixteen open standing spots around campus. Each friend takes one at lunch and another after class. */
+const SPOTS: XZ[] = [
+  [-7.5, 9.5],
+  [21.5, -4.8],
+  [7.5, 9.5],
+  [5.5, -19.5],
+  [-21.5, -4.8],
+  [21.5, 34.8],
+  [21.8, 17.5],
+  [-21.8, 17.5],
+  [-2.5, -12],
+  [2.5, 22],
+  [-12.5, 9.5],
+  [12.5, 9.5],
+  [-17.5, 26],
+  [15, 28.5],
+  [-9.5, 31],
+  [10, 33.5],
+];
+/** Friends' standing spots at lunch and after class (a shifted permutation of `SPOTS`, so spots never clash). */
+export const HANGOUTS = {} as Record<NpcId, { lunch: XZ; after: XZ }>;
+NPC_IDS.forEach((id, i) => {
+  HANGOUTS[id] = { lunch: SPOTS[i], after: SPOTS[(i + 4) % SPOTS.length] };
+});
 export const CROWD_POINTS: XZ[] = [
   [-12, 2],
   [12, 2],

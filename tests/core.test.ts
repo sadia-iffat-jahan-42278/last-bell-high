@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { GRADES, SUBJECT_IDS, TERMS, DAYS_PER_TERM, gradeOf, QUESTS, NPCS, BANK } from '../src/core/data';
+import {
+  BANK,
+  COURSES,
+  CURRICULUM,
+  DAYS_PER_TERM,
+  GRADES,
+  LECTURE_DAYS,
+  LECTURE_PERIODS,
+  MIDTERM_DAY,
+  MIDTERM_PERIOD,
+  NPCS,
+  QUESTS,
+  SUBJECT_IDS,
+  TERMS,
+  TOTAL_COURSES,
+  finalPhases,
+  gradeOf,
+  semesterTimetable,
+} from '../src/core/data';
 import { makeQuestion } from '../src/core/questions';
 import * as St from '../src/core/state';
 import type { GameState } from '../src/core/types';
@@ -50,35 +68,161 @@ describe('question generation', () => {
 });
 
 describe('calendar', () => {
-  it('splits days into terms and flags finals / test / showcase days', () => {
+  it('has 4 years of 2 semesters and splits days into semesters with finals / midterm / showcase days', () => {
+    expect(TERMS).toBe(8);
     expect(St.TOTAL_DAYS).toBe(TERMS * DAYS_PER_TERM);
+    expect(St.TOTAL_DAYS).toBe(64);
     expect(St.term(atDay(0))).toBe(0);
-    expect(St.term(atDay(6))).toBe(1);
-    expect(St.term(atDay(17))).toBe(2);
-    expect(St.isFinals(atDay(5))).toBe(true);
-    expect(St.isFinals(atDay(4))).toBe(false);
+    expect(St.term(atDay(8))).toBe(1);
+    expect(St.term(atDay(63))).toBe(7);
+    expect(St.yearOf(atDay(0))).toBe(1);
+    expect(St.yearOf(atDay(15))).toBe(1);
+    expect(St.yearOf(atDay(16))).toBe(2);
+    expect(St.yearOf(atDay(63))).toBe(4);
+    expect(St.isFinals(atDay(7))).toBe(true);
+    expect(St.isFinals(atDay(6))).toBe(false);
+    expect(St.isFinals(atDay(15))).toBe(true);
     expect(St.isTestDay(atDay(2))).toBe(true);
     expect(St.isShowcase(atDay(4))).toBe(true);
   });
 
-  it('maps periods to kinds', () => {
+  it('maps the six periods to kinds', () => {
     expect(St.periodKind(atDay(0, 0))).toBe('class');
+    expect(St.periodKind(atDay(0, 1))).toBe('class');
     expect(St.periodKind(atDay(0, 2))).toBe('lunch');
-    expect(St.periodKind(atDay(0, 3))).toBe('after');
-    expect(St.periodKind(atDay(4, 3))).toBe('showcase');
-    expect(St.periodKind(atDay(0, 4))).toBe('evening');
-    expect(St.periodKind(atDay(2, 1))).toBe('test');
-    expect(St.periodKind(atDay(5, 0))).toBe('final');
+    expect(St.periodKind(atDay(0, 3))).toBe('class');
+    expect(St.periodKind(atDay(0, 4))).toBe('after');
+    expect(St.periodKind(atDay(4, 4))).toBe('showcase');
+    expect(St.periodKind(atDay(0, 5))).toBe('evening');
+    expect(St.periodKind(atDay(2, MIDTERM_PERIOD))).toBe('test');
+    expect(St.periodKind(atDay(7, 0))).toBe('final');
+    expect(St.periodKind(atDay(7, 1))).toBe('final');
+    expect(St.periodKind(atDay(7, 3))).toBe('free');
     const s = atDay(0, 1);
     s.cancelled[1] = true;
     expect(St.periodKind(s)).toBe('free');
   });
 
-  it('reports the lesson subject, and undefined outside lessons', () => {
-    expect(St.classSubject(atDay(0, 0))).toBe('math');
-    expect(St.classSubject(atDay(2, 1))).toBe(St.testSubject(atDay(2, 1)));
-    expect(St.classSubject(atDay(5, 0))).toBeUndefined();
-    expect(St.classSubject(atDay(0, 2))).toBeUndefined();
+  it('reports the lecture course and its area, and undefined outside lectures', () => {
+    const s = atDay(0, 0);
+    const id = St.classCourse(s)!;
+    expect(CURRICULUM[0]).toContain(id);
+    expect(St.classSubject(s)).toBe(COURSES[id].area);
+    const mid = atDay(MIDTERM_DAY, MIDTERM_PERIOD);
+    expect(St.classCourse(mid)).toBe(St.testCourse(mid));
+    expect(St.classCourse(atDay(7, 0))).toBeUndefined();
+    expect(St.classCourse(atDay(0, 2))).toBeUndefined();
+    expect(St.classSubject(atDay(0, 4))).toBeUndefined();
+  });
+});
+
+describe('curriculum and timetable', () => {
+  it('has 8-10 courses in each of the 8 semesters', () => {
+    expect(CURRICULUM).toHaveLength(8);
+    for (const [sem, ids] of CURRICULUM.entries()) {
+      expect(ids.length, `semester ${sem + 1}`).toBeGreaterThanOrEqual(8);
+      expect(ids.length, `semester ${sem + 1}`).toBeLessThanOrEqual(10);
+      for (const id of ids) {
+        expect(COURSES[id].sem).toBe(sem);
+        expect(COURSES[id].year).toBe(Math.floor(sem / 2) + 1);
+        expect(COURSES[id].tier).toBeGreaterThanOrEqual(1);
+        expect(COURSES[id].tier).toBeLessThanOrEqual(4);
+      }
+    }
+    expect(TOTAL_COURSES).toBe(CURRICULUM.reduce((a, c) => a + c.length, 0));
+  });
+
+  it('gives every course a unique id, a professor and a room', () => {
+    const ids = Object.keys(COURSES);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const c of Object.values(COURSES)) {
+      expect(c.prof.startsWith('Prof.'), c.id).toBe(true);
+      expect(c.room.length).toBeGreaterThan(2);
+      expect(c.building).toBe(c.kind === 'lab' ? 'lab' : 'main');
+    }
+  });
+
+  it('meets every course at least twice, never twice in one day, with a midterm and finals', () => {
+    for (let sem = 0; sem < TERMS; sem++) {
+      const t = semesterTimetable(sem);
+      expect(t).toHaveLength(LECTURE_DAYS + 1);
+      const meets: Record<string, number> = {};
+      for (let d = 0; d < LECTURE_DAYS; d++) {
+        const today: string[] = [];
+        for (const p of LECTURE_PERIODS) {
+          const e = t[d][p];
+          expect(e, `sem ${sem} day ${d} period ${p}`).not.toBeNull();
+          if (e === 'TEST') {
+            expect(d).toBe(MIDTERM_DAY);
+            expect(p).toBe(MIDTERM_PERIOD);
+          } else {
+            expect(CURRICULUM[sem]).toContain(e);
+            today.push(e as string);
+            meets[e as string] = (meets[e as string] ?? 0) + 1;
+          }
+        }
+        expect(new Set(today).size, `sem ${sem} day ${d}`).toBe(today.length);
+        expect(t[d][2]).toBeNull(); // lunch
+      }
+      for (const id of CURRICULUM[sem]) expect(meets[id], `${id} in sem ${sem}`).toBeGreaterThanOrEqual(2);
+      expect(t[LECTURE_DAYS][0]).toBe('FINAL');
+      expect(t[LECTURE_DAYS][1]).toBe('FINAL');
+    }
+  });
+
+  it('is deterministic and the finals boss tests up to four of the semester’s areas', () => {
+    expect(semesterTimetable(3)).toEqual(semesterTimetable(3));
+    for (let sem = 0; sem < TERMS; sem++) {
+      const phases = finalPhases(sem);
+      expect(phases.length).toBeGreaterThanOrEqual(2);
+      expect(phases.length).toBeLessThanOrEqual(4);
+      for (const a of phases) expect(CURRICULUM[sem].some((id) => COURSES[id].area === a)).toBe(true);
+    }
+  });
+});
+
+describe('friends from every year', () => {
+  it('has 16 students, four in each academic year', () => {
+    const ids = Object.keys(NPCS);
+    expect(ids).toHaveLength(16);
+    for (const y of [1, 2, 3, 4]) expect(Object.values(NPCS).filter((n) => n.year === y)).toHaveLength(4);
+    for (const n of Object.values(NPCS)) {
+      expect(n.beats, n.name).toHaveLength(3);
+      expect(n.talk.length, n.name).toBeGreaterThanOrEqual(3);
+      expect(n.perks.length, n.name).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('describes each student as above, level with, or below the player as the years go by', () => {
+    const s = fresh();
+    expect(St.relationTo(s, 'maya')).toBe('peer'); // freshman
+    expect(St.relationTo(s, 'kai')).toBe('senior'); // sophomore, above a freshman
+    expect(St.relationTo(s, 'rin')).toBe('senior');
+    s.day = 3 * 16; // senior year
+    expect(St.yearOf(s)).toBe(4);
+    expect(St.relationTo(s, 'rin')).toBe('peer');
+    expect(St.relationTo(s, 'maya')).toBe('junior'); // a freshman is below a senior
+    expect(St.relationTo(s, 'zoe')).toBe('junior');
+  });
+
+  it('only shows some friends on campus at a time, deterministically', () => {
+    const s = atDay(5, 2);
+    const here = (Object.keys(NPCS) as (keyof typeof NPCS)[]).filter((id) => St.npcPresent(s, id));
+    expect(here.length).toBeGreaterThan(0);
+    expect(here.length).toBeLessThan(16);
+    expect(here).toEqual((Object.keys(NPCS) as (keyof typeof NPCS)[]).filter((id) => St.npcPresent(s, id)));
+  });
+
+  it('stacks friend perks only once their story is unlocked', () => {
+    const s = fresh();
+    expect(St.friendBonus(s, 'xpPct')).toBe(0);
+    s.friends.lina.story = 2;
+    expect(St.friendBonus(s, 'xpPct')).toBeCloseTo(0.05);
+    s.friends.yuki.story = 3;
+    expect(St.friendBonus(s, 'xpPct')).toBeCloseTo(0.1);
+    expect(St.friendBonus(s, 'timePlus')).toBeCloseTo(1);
+    s.friends.sam.story = 2;
+    expect(St.shopPrice(s, 100)).toBeLessThan(99);
   });
 });
 
@@ -153,28 +297,47 @@ describe('grades and rank', () => {
     expect(GRADES.map((g) => g.min)).toEqual([...GRADES.map((g) => g.min)].sort((a, b) => b - a));
   });
 
-  it('weights class 30 / test 30 / final 40 and renormalises missing parts', () => {
+  it('weights lecture 30 / midterm 30 / final 40 and renormalises missing parts', () => {
     const s = fresh();
-    St.recordScore(s, 'class', 'math', 1);
-    expect(St.subjectScore(s, 0, 'math')).toBeCloseTo(100);
-    St.recordScore(s, 'test', 'math', 0);
-    expect(St.subjectScore(s, 0, 'math')).toBeCloseTo(50);
-    St.recordScore(s, 'final', 'math', 1);
-    expect(St.subjectScore(s, 0, 'math')).toBeCloseTo(70);
-    expect(St.subjectScore(s, 0, 'science')).toBeNull();
+    const [a, b] = CURRICULUM[0];
+    St.recordScore(s, 'class', a, 1);
+    expect(St.courseScore(s, 0, a)).toBeCloseTo(100);
+    St.recordScore(s, 'test', a, 0);
+    expect(St.courseScore(s, 0, a)).toBeCloseTo(50);
+    St.recordScore(s, 'final', a, 1);
+    expect(St.courseScore(s, 0, a)).toBeCloseTo(70);
+    expect(St.courseScore(s, 0, b)).toBeNull();
   });
 
   it('has no rank until something is graded, then ranks against 24 classmates', () => {
     const s = fresh();
     expect(St.rankOf(s, 0)).toBeNull();
-    for (const subj of SUBJECT_IDS) St.recordScore(s, 'class', subj, 1);
+    for (const id of CURRICULUM[0]) St.recordScore(s, 'class', id, 1);
     const top = St.rankOf(s, 0);
     expect(top).not.toBeNull();
     expect(top!.total).toBe(25);
     expect(top!.rank).toBe(1);
     const s2 = fresh();
-    for (const subj of SUBJECT_IDS) St.recordScore(s2, 'class', subj, 0);
+    for (const id of CURRICULUM[0]) St.recordScore(s2, 'class', id, 0);
     expect(St.rankOf(s2, 0)!.rank).toBe(25);
+  });
+
+  it('maps scores to a 4.0 GPA', () => {
+    expect(St.gpaOf(100)).toBe(4);
+    expect(St.gpaOf(60)).toBeCloseTo(2);
+    expect(St.gpaOf(0)).toBe(0);
+    expect(St.gpaOf(80)).toBeGreaterThan(St.gpaOf(70));
+  });
+
+  it('ranks the overall result across all eight semesters', () => {
+    const s = fresh();
+    for (let t = 0; t < TERMS; t++) {
+      s.day = t * DAYS_PER_TERM;
+      for (const id of CURRICULUM[t]) St.recordScore(s, 'final', id, 1);
+    }
+    const o = St.overallRank(s);
+    expect(o).not.toBeNull();
+    expect(o!.rank).toBe(1);
   });
 
   it('classmate scores are stable between calls', () => {
@@ -206,7 +369,7 @@ describe('quests, events, weather', () => {
   it('never schedules events on day 1 and respects finals/test-day restrictions', () => {
     expect(St.pickEvent(atDay(0), () => 0)).toBeNull();
     for (let seed = 0; seed < 200; seed++) {
-      const fin = St.pickEvent(atDay(5), mulberry32(seed));
+      const fin = St.pickEvent(atDay(7), mulberry32(seed));
       if (fin) {
         expect(fin.period).toBeGreaterThanOrEqual(2);
         expect(['popquiz', 'guest', 'fire', 'blackout']).not.toContain(fin.id);
@@ -234,8 +397,16 @@ describe('saves', () => {
   it('rejects junk and wrong versions', () => {
     expect(St.migrateSave(null)).toBeNull();
     expect(St.migrateSave('hi')).toBeNull();
+    expect(St.migrateSave({ v: 3 })).toBeNull();
+    expect(St.migrateSave({ v: 1 })).toBeNull(); // old high-school saves are not usable
     expect(St.migrateSave({ v: 2 })).toBeNull();
-    expect(St.migrateSave({ v: 1 })).toBeNull();
+  });
+
+  it('starts with mastery for every subject area and 16 friends', () => {
+    const s = fresh();
+    expect(Object.keys(s.mastery).sort()).toEqual([...SUBJECT_IDS].sort());
+    expect(Object.keys(s.friends)).toHaveLength(16);
+    expect(s.v).toBe(2);
   });
 
   it('round-trips a full save unchanged', () => {

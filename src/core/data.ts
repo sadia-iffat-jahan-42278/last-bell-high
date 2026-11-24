@@ -1,5 +1,7 @@
 // Game content & balance tables. Pure data, no side effects.
 import type {
+  Relation,
+  TalkLine,
   AchievementId,
   ClubId,
   EventId,
@@ -13,58 +15,52 @@ import type {
 
 export { BANK } from './bank';
 export { NPCS } from './npcs';
+export * from './courses';
 
 export const SUBJECTS: Record<SubjectId, { name: string; icon: string; color: string }> = {
   math: { name: 'Math', icon: '➗', color: '#ff7a59' },
   science: { name: 'Science', icon: '🔬', color: '#2ec4b6' },
   english: { name: 'English', icon: '📖', color: '#9b6bff' },
   history: { name: 'History', icon: '🏛️', color: '#f0b429' },
+  cs: { name: 'Computing', icon: '💻', color: '#3d7be0' },
+  econ: { name: 'Economics', icon: '📈', color: '#e0762a' },
 };
 export const SUBJECT_IDS = Object.keys(SUBJECTS) as SubjectId[];
 
-export const TERMS = 3;
-export const DAYS_PER_TERM = 6; // Mon-Fri + Finals day
-export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-export type TimetableSlot = SubjectId | 'TEST';
-export const TIMETABLE: TimetableSlot[][] = [
-  ['math', 'english'],
-  ['science', 'history'],
-  ['english', 'TEST'],
-  ['math', 'science'],
-  ['history', 'math'],
+/** 4 academic years of 2 semesters each. */
+export const TERMS = 8;
+/** Mon-Fri, Mon-Tue of the next week, then Finals day. */
+export const DAYS_PER_TERM = 8;
+export const WEEKDAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Monday (wk 2)',
+  'Tuesday (wk 2)',
+  'Finals Day',
 ];
-export const TEST_SUBJECT: SubjectId[] = ['math', 'science', 'history'];
+export const YEAR_NAMES = ['Freshman', 'Sophomore', 'Junior', 'Senior'];
+/** The player's academic year (1..4) for semester index `t`. */
+export const yearOfTerm = (t: number): number => Math.min(4, Math.floor(t / 2) + 1);
 
 export interface Boss {
   name: string;
   emoji: string;
   color: string;
-  phases: SubjectId[];
   blurb: string;
 }
+/** One finals boss per semester. The subject phases come from that semester's courses (`finalPhases`). */
 export const FINALS: Boss[] = [
-  {
-    name: 'Professor Pop-Quizzo',
-    emoji: '🦉',
-    color: '#ff7a59',
-    phases: ['math', 'english', 'science'],
-    blurb: 'Term 1 Finals',
-  },
-  {
-    name: 'Dr. Deadline',
-    emoji: '⏳',
-    color: '#9b6bff',
-    phases: ['science', 'history', 'math'],
-    blurb: 'Term 2 Finals',
-  },
-  {
-    name: 'The Grand Examiner',
-    emoji: '👁️',
-    color: '#f0b429',
-    phases: ['math', 'english', 'science', 'history'],
-    blurb: 'Final Exams',
-  },
+  { name: 'Professor Pop-Quizzo', emoji: '🦉', color: '#ff7a59', blurb: 'Semester 1 Finals' },
+  { name: 'Dr. Deadline', emoji: '⏳', color: '#9b6bff', blurb: 'Semester 2 Finals' },
+  { name: 'The Midterm Hydra', emoji: '🐉', color: '#2ec4b6', blurb: 'Semester 3 Finals' },
+  { name: 'Count Cram', emoji: '🧛', color: '#c23b3b', blurb: 'Semester 4 Finals' },
+  { name: 'The Citation Sphinx', emoji: '🦁', color: '#f0b429', blurb: 'Semester 5 Finals' },
+  { name: 'Baron von Bibliography', emoji: '🧐', color: '#3d7be0', blurb: 'Semester 6 Finals' },
+  { name: 'The Thesis Titan', emoji: '🗿', color: '#8a8f9a', blurb: 'Semester 7 Finals' },
+  { name: 'The Grand Examiner', emoji: '👁️', color: '#ffb300', blurb: 'Graduation Exams' },
 ];
 
 export interface Period {
@@ -75,12 +71,17 @@ export interface Period {
   icon: string;
 }
 export const PERIODS: Period[] = [
-  { id: 0, name: 'Morning Class', time: '8:00', hour: 8.0, icon: '🔔' },
-  { id: 1, name: 'Late Morning', time: '10:15', hour: 10.25, icon: '📘' },
+  { id: 0, name: 'Morning Lecture', time: '8:30', hour: 8.5, icon: '🔔' },
+  { id: 1, name: 'Late Morning Lecture', time: '10:30', hour: 10.5, icon: '📘' },
   { id: 2, name: 'Lunch Break', time: '12:30', hour: 12.5, icon: '🍱' },
-  { id: 3, name: 'After School', time: '15:30', hour: 15.5, icon: '🎒' },
-  { id: 4, name: 'Evening', time: '19:00', hour: 19.0, icon: '🌆' },
+  { id: 3, name: 'Afternoon Lecture', time: '14:00', hour: 14.0, icon: '📗' },
+  { id: 4, name: 'After Class', time: '16:30', hour: 16.5, icon: '🎒' },
+  { id: 5, name: 'Evening', time: '19:00', hour: 19.0, icon: '🌆' },
 ];
+export const LUNCH_PERIOD = 2;
+export const AFTER_PERIOD = 4;
+export const EVENING_PERIOD = 5;
+export const LAST_PERIOD = 5;
 
 /* ---------------- items ---------------- */
 export interface Item {
@@ -172,7 +173,7 @@ export const PERKS: Record<PerkId, { name: string; icon: string; desc: string }>
     desc: 'Each question has a 25% chance to auto-remove a wrong answer.',
   },
   lucky: { name: 'Lucky Streak', icon: '🍀', desc: 'Loot chests and daily bonuses are 30% bigger.' },
-  scholar: { name: 'Scholar', icon: '🎓', desc: 'Mastery grows 30% faster from every lesson.' },
+  scholar: { name: 'Scholar', icon: '🎓', desc: 'Mastery grows 30% faster from every lecture.' },
 };
 
 /* ---------------- quests, achievements, events ---------------- */
@@ -184,10 +185,10 @@ export interface QuestDef {
   xp: number;
 }
 export const QUESTS: QuestDef[] = [
-  { id: 'classA', text: 'Score an A or better in class', need: 1, coins: 25, xp: 30 },
-  { id: 'classes', text: 'Attend 2 lessons', need: 2, coins: 15, xp: 25 },
+  { id: 'classA', text: 'Score an A or better in a lecture', need: 1, coins: 25, xp: 30 },
+  { id: 'classes', text: 'Attend 2 lectures', need: 2, coins: 15, xp: 25 },
   { id: 'star', text: 'Collect a gold star', need: 1, coins: 25, xp: 35 },
-  { id: 'talk', text: 'Chat with 2 friends', need: 2, coins: 20, xp: 30 },
+  { id: 'talk', text: 'Chat with 2 students', need: 2, coins: 20, xp: 30 },
   { id: 'canteen', text: 'Eat lunch at the canteen', need: 1, coins: 15, xp: 20 },
   { id: 'study', text: 'Study in the library', need: 1, coins: 20, xp: 30 },
   { id: 'club', text: 'Finish a club activity', need: 1, coins: 25, xp: 35 },
@@ -199,13 +200,13 @@ export const QUESTS: QuestDef[] = [
 ];
 
 export const ACHIEVEMENTS: { id: AchievementId; icon: string; name: string; desc: string }[] = [
-  { id: 'firstA', icon: '🅰️', name: 'Straight A', desc: 'Score an A in any lesson.' },
+  { id: 'firstA', icon: '🅰️', name: 'Straight A', desc: 'Score an A in any lecture.' },
   { id: 'combo10', icon: '🔥', name: 'On Fire', desc: 'Reach a 10-answer streak.' },
   { id: 'perfectTest', icon: '💯', name: 'Flawless', desc: 'Finish a test with a perfect score.' },
   { id: 'allStars', icon: '⭐', name: 'Star Collector', desc: 'Find all 10 gold stars.' },
   { id: 'cats', icon: '🐱', name: 'Cat Whisperer', desc: 'Pet all 3 campus cats.' },
   { id: 'bff', icon: '💖', name: 'Best Friend', desc: 'Max out a friendship.' },
-  { id: 'social', icon: '🦋', name: 'Social Star', desc: 'Reach friendship 50 with all four friends.' },
+  { id: 'social', icon: '🦋', name: 'Social Star', desc: 'Reach friendship 50 with 8 different students.' },
   { id: 'rich', icon: '💰', name: 'Pocket Money', desc: 'Hold 400 coins at once.' },
   { id: 'lvl5', icon: '🎖️', name: 'Rising Student', desc: 'Reach level 5.' },
   { id: 'lvl10', icon: '🏅', name: 'Campus Legend', desc: 'Reach level 10.' },
@@ -215,7 +216,7 @@ export const ACHIEVEMENTS: { id: AchievementId; icon: string; name: string; desc
   { id: 'eureka', icon: '🧪', name: 'Eureka!', desc: 'Complete 7 rounds in Science Club.' },
   { id: 'caught', icon: '🚨', name: 'Busted', desc: 'Get caught cheating or skipping class.' },
   { id: 'rebel', icon: '😎', name: 'Rebel Genius', desc: 'Cheat successfully and still ace the test.' },
-  { id: 'rank1', icon: '🥇', name: 'Top of the Class', desc: 'Reach rank 1 on a term report card.' },
+  { id: 'rank1', icon: '🥇', name: 'Top of the Class', desc: 'Reach rank 1 on a semester transcript.' },
   { id: 'streak3', icon: '📅', name: 'Daily Grind', desc: 'Complete all daily quests 3 days in a row.' },
 ];
 
@@ -228,13 +229,13 @@ export interface EventDef {
 }
 export const EVENT_POOL: EventDef[] = [
   { id: 'popquiz', periods: [1, 3], weight: 3, noFinal: true },
-  { id: 'wallet', periods: [2, 3], weight: 2 },
-  { id: 'note', periods: [0, 1, 2, 3], weight: 3 },
-  { id: 'guest', periods: [1], weight: 2, noTestDay: true, noFinal: true },
-  { id: 'fire', periods: [0, 1], weight: 1, noTestDay: true, noFinal: true },
-  { id: 'blackout', periods: [1], weight: 1, noTestDay: true, noFinal: true },
+  { id: 'wallet', periods: [2, 4], weight: 2 },
+  { id: 'note', periods: [0, 1, 2, 3, 4], weight: 3 },
+  { id: 'guest', periods: [1, 3], weight: 2, noTestDay: true, noFinal: true },
+  { id: 'fire', periods: [0, 1, 3], weight: 1, noTestDay: true, noFinal: true },
+  { id: 'blackout', periods: [1, 3], weight: 1, noTestDay: true, noFinal: true },
   { id: 'special', periods: [2], weight: 2 },
-  { id: 'fair', periods: [3], weight: 2 },
+  { id: 'fair', periods: [4], weight: 2 },
 ];
 
 /* ---------------- clubs ---------------- */
@@ -303,7 +304,7 @@ export const GRADES: Grade[] = [
 ];
 export const gradeOf = (pct: number): Grade => GRADES.find((g) => pct >= g.min) ?? GRADES[GRADES.length - 1];
 
-export const TEACHER_COMMENTS: Record<LetterGrade, [string, string]> = {
+export const PROFESSOR_COMMENTS: Record<LetterGrade, [string, string]> = {
   S: ['A pleasure to teach. Truly.', 'Outstanding work this term!'],
   A: ['Strong work. Keep that momentum!', 'Very impressive effort this term.'],
   B: ['Solid progress. Room to shine!', 'Good effort. A bit more focus and you’ll fly.'],
@@ -313,3 +314,77 @@ export const TEACHER_COMMENTS: Record<LetterGrade, [string, string]> = {
 };
 
 export const xpForLevel = (lvl: number): number => 70 + lvl * 45;
+
+/* ---------------- seniors, peers and juniors ---------------- */
+/** Generic chat lines used on top of each friend's own, depending on whether they are older, equal or younger. */
+export const RELATION_TALK: Record<Relation, TalkLine[]> = {
+  senior: [
+    {
+      line: 'Advice from someone who has been here longer: never pull an all-nighter before a midterm.',
+      a: 'Noted. Thanks for the tip.',
+      ra: 'Good. Sleep is a study technique.',
+      b: 'Too late, I already bought coffee.',
+      rb: 'Ha! Then buy a second one for me.',
+    },
+    {
+      line: 'Senior secret number one: go to office hours. Professors love it when you show up.',
+      a: 'I will go this week.',
+      ra: 'Do it. Free knowledge, sometimes free cookies.',
+      b: 'What if I just email?',
+      rb: 'Emails get lost. People get remembered.',
+    },
+    {
+      line: 'When I was your year I thought the library was haunted. It is only very quiet.',
+      a: 'Is it actually haunted?',
+      ra: 'Only by overdue books.',
+      b: 'I think it is haunted too.',
+      rb: 'See? You are going to fit right in.',
+    },
+  ],
+  peer: [
+    {
+      line: 'Which course is crushing you the hardest this semester?',
+      a: 'Honestly, all of them.',
+      ra: 'Solidarity. Let’s suffer together.',
+      b: 'I thrive on pressure. And snacks.',
+      rb: 'Admirable. Share the snacks.',
+    },
+    {
+      line: 'Want to start a study group? Misery loves company.',
+      a: 'Count me in.',
+      ra: 'Great. Bring flashcards and chaos.',
+      b: 'Only if there’s pizza.',
+      rb: 'Pizza is the foundation of all learning.',
+    },
+    {
+      line: 'Did you see the syllabus for next week? I am pretending I did not.',
+      a: 'Let’s read it together.',
+      ra: 'Okay, but you hold my hand.',
+      b: 'Ignorance is bliss.',
+      rb: 'Until Monday. Then it is panic.',
+    },
+  ],
+  junior: [
+    {
+      line: 'Excuse me, you are ahead of me, right? Any advice for surviving finals?',
+      a: 'Start early and sleep more.',
+      ra: 'Writing that down! Early. Sleep. Got it.',
+      b: 'Just pray. And caffeinate.',
+      rb: 'That is honestly my current plan.',
+    },
+    {
+      line: 'People say you are really good at this. Can I ask how you study?',
+      a: 'Short sessions, lots of practice.',
+      ra: 'Practice. Okay. I can do practice.',
+      b: 'Mostly stubbornness.',
+      rb: 'Stubbornness I can do!',
+    },
+    {
+      line: 'Everyone in my dorm says you are super chill. Is that the secret?',
+      a: 'Chill and organised.',
+      ra: 'Organised... I own a planner. I never open it.',
+      b: 'No, I am secretly panicking.',
+      rb: 'Wow. That is actually comforting.',
+    },
+  ],
+};

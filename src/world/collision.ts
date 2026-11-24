@@ -4,8 +4,20 @@ import { BOUNDS, type Point } from './layout';
 export type Collider =
   { t: 'b'; x0: number; x1: number; z0: number; z1: number } | { t: 'c'; x: number; z: number; r: number };
 
-/** Push `p` (a circle of radius `r`) out of every collider and keep it inside the campus bounds. */
-export function resolveCollisions(colliders: readonly Collider[], p: Point, r: number): void {
+export interface Bounds {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/** Push `p` (a circle of radius `r`) out of every collider and keep it inside `bounds` (the campus by default). */
+export function resolveCollisions(
+  colliders: readonly Collider[],
+  p: Point,
+  r: number,
+  bounds: Bounds = BOUNDS,
+): void {
   for (let pass = 0; pass < 2; pass++) {
     for (const c of colliders) {
       if (c.t === 'b') {
@@ -47,6 +59,6 @@ export function resolveCollisions(colliders: readonly Collider[], p: Point, r: n
       }
     }
   }
-  p.x = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, p.x));
-  p.z = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, p.z));
+  p.x = Math.max(bounds.x0, Math.min(bounds.x1, p.x));
+  p.z = Math.max(bounds.z0, Math.min(bounds.z1, p.z));
 }

@@ -3,34 +3,47 @@ import { Sound } from './audio/sound';
 import {
   ACHIEVEMENTS,
   CLUBS,
+  COURSES,
+  DAYS_PER_TERM,
+  EVENING_PERIOD,
+  EXAM_HALL,
   FINALS,
   GRADES,
   ITEMS,
+  LAST_PERIOD,
   NPCS,
   PERIODS,
   PERKS,
+  PROFESSOR_COMMENTS,
   QUESTS,
+  RELATION_TALK,
+  ROOM_KIND_NAME,
   SUBJECTS,
   SUBJECT_IDS,
-  TEACHER_COMMENTS,
   WEEKDAYS,
+  YEAR_NAMES,
   gradeOf,
   xpForLevel,
+  type Course,
 } from './core/data';
 import * as St from './core/state';
-import type {
-  ClubId,
-  Fx,
-  GameState,
-  ItemId,
-  Look,
-  Meta,
-  NpcId,
-  PerkId,
-  QuestId,
-  SubjectId,
-  Weather,
-  ZoneId,
+import {
+  NPC_IDS,
+  type ClassBuilding,
+  type ClubId,
+  type CourseId,
+  type Fx,
+  type GameState,
+  type ItemId,
+  type Look,
+  type Meta,
+  type NpcId,
+  type PerkId,
+  type QuestId,
+  type RoomKind,
+  type SubjectId,
+  type Weather,
+  type ZoneId,
 } from './core/types';
 import { clamp, hashStr, mulberry32, sleep } from './core/util';
 import { runDodge, type DodgeResult } from './minigames/dodge';
@@ -44,6 +57,21 @@ import { hud } from './ui/hud';
 import { ui, type ChoiceOption } from './ui/ui';
 import { STARS } from './world/layout';
 
+/** Describes a classroom the player can walk into. */
+export interface RoomSpec {
+  kind: RoomKind;
+  building: ClassBuilding;
+  /** Room label such as `LH-101`. */
+  room: string;
+  /** Shown while fading in, e.g. "Lecture Hall LH-101". */
+  title: string;
+  /** The course (or exam) held here. */
+  sub: string;
+  /** Name of the professor standing at the front. */
+  prof: string;
+  seed: number;
+}
+
 /** What the 3D scene exposes to the rules layer. */
 export interface SceneHooks {
   setPeriod(period: number, instant?: boolean): void;
@@ -52,6 +80,10 @@ export interface SceneHooks {
   refreshCollectibles(): void;
   getPlayerPos(): { x: number; z: number };
   setPlayerLook(look: Look): void;
+  enterRoom(spec: RoomSpec): void;
+  exitRoom(): void;
+  /** Move the player into their seat (seated pose); standing up happens when the player leaves the room. */
+  sitDown(): void;
 }
 const noopScene: SceneHooks = {
   setPeriod() {},
@@ -60,6 +92,9 @@ const noopScene: SceneHooks = {
   refreshCollectibles() {},
   getPlayerPos: () => ({ x: 0, z: 0 }),
   setPlayerLook() {},
+  enterRoom() {},
+  exitRoom() {},
+  sitDown() {},
 };
 
 export const game = {
@@ -81,25 +116,57 @@ const S = (): GameState => {
 export function save(): void {
   if (game.s) St.saveGame(game.s);
 }
-const dayLabel = (s: GameState): string =>
-  `Term ${St.term(s) + 1} · ${WEEKDAYS[St.dayInTerm(s)].slice(0, 3)} · Day ${s.day + 1}/${St.TOTAL_DAYS}`;
+const dayLabel = (s: GameState): string => {
+  const wd = St.isFinals(s) ? 'Finals' : WEEKDAYS[St.dayInTerm(s)].slice(0, 3);
+  return `Sem ${St.term(s) + 1} · Yr ${St.yearOf(s)} · ${wd} · Day ${s.day + 1}/${St.TOTAL_DAYS}`;
+};
 const WEATHER: Record<Weather, string> = { sunny: '☀️ Sunny', cloudy: '☁️ Cloudy', rain: '🌧️ Rainy' };
+const BUILDING_NAME: Record<ClassBuilding, string> = { main: 'Hale Hall', lab: 'Science Labs' };
+const courseLabel = (c: Course): string => `${SUBJECTS[c.area].icon} ${c.name}`;
+
+/** The classroom for this period's lecture, midterm or finals, or null when nothing is scheduled. */
+export function classroomSpec(s: GameState): RoomSpec | null {
+  const k = St.periodKind(s);
+  if (k === 'final') {
+    const F = FINALS[St.term(s)];
+    return {
+      kind: EXAM_HALL.kind,
+      building: EXAM_HALL.building,
+      room: EXAM_HALL.room,
+      title: EXAM_HALL.name,
+      sub: `${F.emoji} ${F.name}`,
+      prof: F.name,
+      seed: s.day * 31 + 7,
+    };
+  }
+  const id = St.classCourse(s);
+  if (!id) return null;
+  const c = COURSES[id];
+  return {
+    kind: c.kind,
+    building: c.building,
+    room: c.room,
+    title: `${ROOM_KIND_NAME[c.kind]} ${c.room}`,
+    sub: `${courseLabel(c)} · ${c.code}`,
+    prof: c.prof,
+    seed: s.day * 131 + s.period * 17 + c.id.length,
+  };
+}
 
 export function objective(s: GameState): string {
   const k = St.periodKind(s);
-  const sub = St.classSubject(s);
-  const name = sub ? SUBJECTS[sub].name : '';
+  const spec = classroomSpec(s);
   switch (k) {
     case 'class':
-      return `📘 Head to class: ${name} (Main Building)`;
+      return `📘 ${COURSES[St.classCourse(s) as CourseId].name}: ${spec?.room} (${BUILDING_NAME[spec?.building ?? 'main']})`;
     case 'test':
-      return `📝 Class test: ${name} (Main Building)`;
+      return `📝 Midterm: ${COURSES[St.classCourse(s) as CourseId].name} (${spec?.room}, ${BUILDING_NAME[spec?.building ?? 'main']})`;
     case 'final':
-      return '⚔️ Finals! Report to the Main Building';
+      return '⚔️ Finals! Report to the Grand Exam Hall (Hale Hall)';
     case 'lunch':
       return '🍱 Lunch: eat at the Canteen, or relax';
     case 'after':
-      return '🎒 After school: clubs, study, friends…';
+      return '🎒 After class: clubs, study, friends…';
     case 'showcase':
       return '🎤 Club Showcase today! Pick a club';
     case 'free':
@@ -112,7 +179,8 @@ export function objective(s: GameState): string {
 /** Which door the objective marker should point at, if any. */
 export function objectiveTarget(s: GameState): ZoneId | null {
   const k = St.periodKind(s);
-  if (k === 'class' || k === 'test' || k === 'final') return 'main';
+  if (k === 'class' || k === 'test') return COURSES[St.classCourse(s) as CourseId].building;
+  if (k === 'final') return 'main';
   if (k === 'evening') return 'gate';
   return null;
 }
@@ -140,8 +208,12 @@ export function hudInfo(): HudInfo {
 export function refreshHud(): void {
   if (game.s) hud.update(hudInfo());
 }
-const classTier = (s: GameState, bonus = 0): number =>
-  clamp(1 + St.term(s) + (St.dayInTerm(s) >= 3 ? 1 : 0) + bonus, 1, 4);
+/** Question tier for a course: its own level, a notch harder late in the semester. */
+const courseTier = (s: GameState, c: Course, bonus = 0): number =>
+  clamp(c.tier + (St.dayInTerm(s) >= 5 ? 1 : 0) + bonus, 1, 4);
+/** Tier for study sessions not tied to a course: grows with the academic year. */
+const studyTier = (s: GameState, bonus = 0): number =>
+  clamp(St.yearOf(s) + (St.dayInTerm(s) >= 4 ? 1 : 0) + bonus - 1, 1, 4);
 const nameSeed = (s: GameState): number => hashStr(s.name) & 0xffff;
 
 /* ============================== rewards ============================== */
@@ -242,7 +314,7 @@ function trackQuest(id: QuestId, n = 1): void {
 export async function advancePeriod(n = 1): Promise<void> {
   const s = S();
   s.period += n;
-  if (s.period > 4) {
+  if (s.period > LAST_PERIOD) {
     await endDay();
     return;
   }
@@ -402,56 +474,146 @@ function runLesson(kind: QuizKind, subj: SubjectId, opts: LessonOpts): Promise<Q
     state: s,
     subject: subj,
     count,
-    tier: tier ?? classTier(s, kind === 'test' ? 1 : 0),
+    tier: tier ?? studyTier(s, kind === 'test' ? 1 : 0),
     title: title ?? `${SB.icon} ${SB.name}`,
     items,
     seed: s.day * 1009 + s.period * 31 + seedAdd + nameSeed(s),
   });
 }
 
+/** Walk through the classroom door: fade in to the interior. The lesson itself starts at the player's seat. */
+export async function enterClassroom(): Promise<void> {
+  const s = S();
+  const spec = classroomSpec(s);
+  if (!spec) return;
+  await ui.fade(true, spec.title, spec.sub);
+  game.scene.enterRoom(spec);
+  await sleep(250);
+  await ui.fade(false);
+  ui.toast('💺 Find the glowing seat and press E to sit down', 'gold', 4200);
+}
+
+/** Leave the classroom without attending. */
+export async function leaveClassroom(): Promise<void> {
+  await ui.fade(true, '🚪 Leaving the room…');
+  game.scene.exitRoom();
+  await sleep(150);
+  await ui.fade(false);
+}
+
+/** Sit at your desk and start whatever is scheduled: a lecture, the midterm or finals. */
+export async function attendClass(): Promise<void> {
+  const s = S();
+  const k = St.periodKind(s);
+  if (k !== 'class' && k !== 'test' && k !== 'final') return;
+  game.scene.sitDown();
+  if (k === 'class') await doClass();
+  else if (k === 'test') await doTest();
+  else await doFinal();
+}
+
+/** Chat with the professor before the lesson starts: a study tip once per course per day. */
+export async function talkProfessor(): Promise<void> {
+  const s = S();
+  const id = St.classCourse(s);
+  const spec = classroomSpec(s);
+  if (!spec) return;
+  if (!id) {
+    await ui.say([[spec.prof, 'Take your seat when you are ready. Good luck today.']]);
+    return;
+  }
+  const c = COURSES[id];
+  if (s.profDay[id] === s.day) {
+    await ui.say([[c.prof, 'We already talked today. Save some questions for office hours!']]);
+    return;
+  }
+  await ui.say([[c.prof, `Welcome to ${c.name} (${c.code}). Ask me anything before we begin.`]]);
+  const i = await ui.ask(c.prof, 'What do you ask?', [
+    'Any study tips?',
+    St.isTestDay(s) || St.isFinals(s) ? 'What will the exam cover?' : 'When is the midterm?',
+    'Just say hello',
+  ]);
+  s.profDay[id] = s.day;
+  if (i === 0) {
+    const m = St.addMastery(s, c.area, 1.6);
+    St.addXP(s, 10);
+    await ui.say([[c.prof, 'Do a few practice questions every day. Little and often beats cramming.']]);
+    ui.toast(`${SUBJECTS[c.area].icon} Study tip: mastery +${m.toFixed(1)}`, 'good');
+  } else if (i === 1) {
+    const ex = St.isTestDay(s) ? 'this midterm' : 'the semester';
+    await ui.say([
+      [
+        c.prof,
+        St.isFinals(s) || St.isTestDay(s)
+          ? `Expect ${SUBJECTS[c.area].name.toLowerCase()} questions at about difficulty ${c.tier} out of 4. Stay calm.`
+          : `The midterm is on Wednesday of week one, and finals close the semester. Keep up with ${ex}.`,
+      ],
+    ]);
+    St.addStress(s, -3);
+    ui.toast('😌 Advice received: −3 stress', 'good');
+  } else {
+    await ui.say([[c.prof, 'Always nice to see a friendly face. Let’s get started.']]);
+    s.rep = clamp(s.rep + 1, 0, 100);
+    St.gainStat(s, 'cha', 0.1);
+  }
+  refreshHud();
+}
+
 export async function doClass(): Promise<void> {
   const s = S();
-  const subj = St.classSubject(s);
-  if (!subj) return;
-  const SB = SUBJECTS[subj];
-  Sound.sfx('door');
-  await ui.banner(`${SB.icon} ${SB.name}`, `Period ${s.period + 1} · Classwork`, 1500);
-  const R = await runLesson('class', subj, { count: 5, title: `${SB.icon} ${SB.name} Classwork` });
-  St.recordScore(s, 'class', subj, R.pct);
+  const id = St.classCourse(s);
+  if (!id) return;
+  const c = COURSES[id];
+  const subj = c.area;
+  await ui.banner(courseLabel(c), `${c.room} · ${c.prof} · Lecture`, 1500);
+  const R = await runLesson('class', subj, {
+    count: 5,
+    title: `${SUBJECTS[subj].icon} ${c.name}`,
+    tier: courseTier(s, c),
+  });
+  St.recordScore(s, 'class', id, R.pct);
   s.totals.classes++;
   trackQuest('classes');
-  await gradedResult('class', subj, R, { title: 'Classwork graded!' });
+  await gradedResult('class', subj, R, { title: 'Lecture quiz graded!' });
   await spendPeriod(BASE.class.energy, BASE.class.stress * (1 - R.pct));
 }
 
 export async function doTest(): Promise<void> {
   const s = S();
-  const subj = St.testSubject(s);
-  const SB = SUBJECTS[subj];
-  Sound.sfx('door');
-  await ui.banner('📝 CLASS TEST', `${SB.icon} ${SB.name} · counts toward your grade`, 1800);
+  const id = St.testCourse(s);
+  const c = COURSES[id];
+  const subj = c.area;
+  await ui.banner('📝 MIDTERM EXAM', `${courseLabel(c)} · counts toward your grade`, 1800);
   await ui.say([
-    ['Mr. Hale', `Pencils ready. Eyes on your own paper. ${SB.name} test — begin when you’re ready.`],
+    [c.prof, `Pencils ready. Eyes on your own paper. ${c.name} midterm: begin when you’re ready.`],
   ]);
-  const items = await prepItems('Class test prep', true);
-  const R = await runLesson('test', subj, { count: 8, title: `📝 ${SB.name} Test`, items });
+  const items = await prepItems('Midterm prep', true);
+  const R = await runLesson('test', subj, {
+    count: 8,
+    title: `📝 ${c.name} Midterm`,
+    items,
+    tier: courseTier(s, c, 1),
+  });
   if (R.cheatUsed && R.caught) {
     s.caught++;
     s.rep = clamp(s.rep - 20, 0, 100);
     s.detention = true;
     St.addStress(s, 20);
-    St.recordScore(s, 'test', subj, 0);
+    St.recordScore(s, 'test', id, 0);
     Sound.sfx('lose');
     await ui.say([
-      ['Mr. Hale', 'What is THAT hidden in your sleeve? …Cheat sheet. Detention, and the test is a zero.'],
+      [
+        c.prof,
+        'What is THAT hidden in your sleeve? …A cheat sheet. Academic misconduct. The exam is a zero.',
+      ],
       ['You', 'Oh no.'],
     ]);
     await ui.results({
       title: 'Caught cheating!',
-      subtitle: 'The test counts as 0',
+      subtitle: 'The midterm counts as 0',
       letter: 'F',
       rows: [
-        ['Detention', 'No clubs today'],
+        ['Disciplinary hearing', 'No clubs today'],
         ['Reputation', '−20'],
       ],
       chips: [{ text: '😵 +20 stress', cls: 'bad' }],
@@ -461,22 +623,25 @@ export async function doTest(): Promise<void> {
     await spendPeriod(BASE.test.energy, 0);
     return;
   }
-  St.recordScore(s, 'test', subj, R.pct);
+  St.recordScore(s, 'test', id, R.pct);
   s.totals.tests++;
   if (R.cheatUsed && !R.caught) {
     s.cheated++;
     if (R.pct >= 0.85) s.flags.rebel = true;
     ui.toast('😏 Nobody noticed the cheat sheet…', 'gold');
   }
-  await gradedResult('test', subj, R, { title: 'Test results' });
+  await gradedResult('test', subj, R, { title: 'Midterm results' });
   if (s.flags.rinWager) {
-    // Rin's rival wager resolves on the next test.
+    // Rin's rival wager resolves on the next midterm.
     const roll = mulberry32(s.day * 71 + 5)();
-    const rin = clamp(0.74 + St.term(s) * 0.04 + roll * 0.16, 0.6, 0.98);
+    const rin = clamp(0.74 + St.term(s) * 0.02 + roll * 0.16, 0.6, 0.98);
     const win = R.pct > rin;
     s.flags.rinWager = false;
     await ui.say([
-      ['Rin', `Test results are out. I got ${Math.round(rin * 100)}%. You got ${Math.round(R.pct * 100)}%.`],
+      [
+        'Rin',
+        `Midterm results are out. I got ${Math.round(rin * 100)}%. You got ${Math.round(R.pct * 100)}%.`,
+      ],
       [
         'Rin',
         win ? 'Tch. You won. Here — lunch money. Don’t gloat.' : 'My win. Lunch is on you. Don’t sulk.',
@@ -498,38 +663,40 @@ export async function doTest(): Promise<void> {
 export async function doFinal(): Promise<void> {
   const s = S();
   const F = FINALS[St.term(s)];
+  const phases = St.finalsPhases(s);
   Sound.sfx('boss');
   await ui.banner('⚔️ FINALS DAY', F.blurb, 1900);
   await ui.say([
-    ['Principal Hale', `Today is the day. ${F.name} awaits in the exam hall.`],
-    [F.name, `${F.emoji} Mwahaha! Show me what you’ve learned this term!`],
+    ['Dean Hale', `Today is the day. ${F.name} awaits in the exam hall.`],
+    [F.name, `${F.emoji} Mwahaha! Show me what you’ve learned this semester!`],
   ]);
   const items = await prepItems('Finals prep', false);
   const R = await runQuiz({
     kind: 'final',
     state: s,
-    phases: F.phases,
+    phases,
     perPhase: 5,
-    tier: clamp(2 + St.term(s), 2, 4),
+    tier: clamp(2 + Math.floor(St.term(s) / 2), 2, 4),
     title: `${F.emoji} ${F.name}`,
     items,
     boss: F,
     seed: s.day * 7919,
   });
-  for (const sj of F.phases) St.recordScore(s, 'final', sj, R.pct);
+  // The comprehensive final counts toward every course this semester.
+  for (const id of St.courses(s)) St.recordScore(s, 'final', id, R.pct);
   const extra: Chip[] = [];
   if (R.won) {
     s.totals.bosses++;
-    const c = 80 + 40 * St.term(s);
+    const c = 80 + 20 * St.term(s);
     St.addCoins(s, c);
     extra.push({ text: `🏆 Boss bonus 🪙 +${c}`, cls: 'coin' });
     Sound.sfx('win');
   } else Sound.sfx('lose');
-  await gradedResult('final', F.phases[0], R, {
+  await gradedResult('final', phases[0], R, {
     title: R.won ? `${F.name} defeated!` : 'Exams complete',
     extraChips: extra,
   });
-  ui.toast(`${F.phases.map((x) => SUBJECTS[x].icon).join(' ')} marks recorded for the term report`, 'good');
+  ui.toast(`${phases.map((x) => SUBJECTS[x].icon).join(' ')} marks recorded for every course`, 'good');
   await spendPeriod(BASE.final.energy, BASE.final.stress * (1 - R.pct) + 4, 2);
 }
 
@@ -557,7 +724,7 @@ export async function doLibrary(): Promise<void> {
   }
   const SB = SUBJECTS[subj];
   await ui.banner(`${SB.icon} Study session`, SB.name, 1100);
-  const R = await runLesson('study', subj, { count: 6, title: `📚 ${SB.name} Study`, tier: classTier(s, 0) });
+  const R = await runLesson('study', subj, { count: 6, title: `📚 ${SB.name} Study`, tier: studyTier(s, 0) });
   trackQuest('study');
   await gradedResult('study', subj, R, { title: 'Study session done' });
   await spendPeriod(BASE.study.energy, -4);
@@ -576,7 +743,7 @@ async function doEveningStudy(): Promise<boolean> {
   const R = await runLesson('study', subj, {
     count: 6,
     title: `🌙 ${SB.name} Late Study`,
-    tier: classTier(s, 1),
+    tier: studyTier(s, 1),
   });
   await gradedResult('study', subj, R, { title: 'Late-night study', bonusMult: owl ? 1.5 : 1.15 });
   if (owl) St.addMastery(s, subj, 2.5);
@@ -652,7 +819,8 @@ export async function doClub(clubId: ClubId): Promise<void> {
     state: s,
     seed: s.day * 31 + clubId.length,
     hard: showcase,
-    term: t,
+    // The club games were tuned for three difficulty steps; spread the 8 semesters over them.
+    term: Math.min(2, Math.floor(t / 3)),
     look: s.look,
   });
   Sound.startMusic('explore');
@@ -803,7 +971,7 @@ export async function doRooftop(): Promise<void> {
   }
   if (classTime) {
     const ok = await ui.confirm(
-      'Skipping class is risky: if the prefect catches you, you get detention and lose reputation. Nobody gets credit for the lesson.',
+      'Skipping a lecture is risky: if campus security catches you, you face a disciplinary hearing and lose reputation. Nobody gets credit for the lecture.',
       'Skip class 😏',
       'Go to class instead',
       'Skip class?',
@@ -816,8 +984,8 @@ export async function doRooftop(): Promise<void> {
       s.detention = true;
       St.addStress(s, 12);
       Sound.sfx('lose');
-      await ui.say([['Prefect', 'Caught you! Skipping class? That’s detention.']]);
-      ui.toast('🚨 Busted! Detention today.', 'bad');
+      await ui.say([['Campus Security', 'Caught you! Skipping lectures? That’s a disciplinary hearing.']]);
+      ui.toast('🚨 Busted! No clubs today.', 'bad');
     } else {
       St.addEnergy(s, 20);
       St.addStress(s, -18);
@@ -825,17 +993,16 @@ export async function doRooftop(): Promise<void> {
       ui.toast('😴 Nap success. Nobody noticed.', 'good');
       trackQuest('rooftop');
     }
-    const subj = St.classSubject(s);
-    if (k === 'test' && subj) {
-      St.recordScore(s, 'test', subj, 0);
-      ui.toast('Missed test: recorded as 0', 'bad');
+    if (k === 'test') {
+      St.recordScore(s, 'test', St.testCourse(s), 0);
+      ui.toast('Missed midterm: recorded as 0', 'bad');
     }
     await spendPeriod(0, 0);
     return;
   }
   const i = await ui.choice({
     title: '🌤️ Rooftop',
-    sub: 'A quiet spot above the school. Costs this period.',
+    sub: 'A quiet spot above the campus. Costs this period.',
     options: [
       { icon: '😌', label: 'Relax and watch the clouds', sub: '−18 stress · +12 energy' },
       { icon: '🎧', label: 'Listen to music', sub: '−12 stress · +CRE' },
@@ -853,8 +1020,7 @@ export async function doRooftop(): Promise<void> {
   St.gainStat(s, 'cha', 0.1);
   trackQuest('rooftop');
   Sound.sfx('ok');
-  const friends: NpcId[] = ['maya', 'kai', 'zoe', 'rin'];
-  const who = friends[Math.floor(Math.random() * friends.length)];
+  const who = NPC_IDS[Math.floor(Math.random() * NPC_IDS.length)];
   if (Math.random() < 0.5) {
     St.addRel(s, who, 4);
     ui.toast(`${NPCS[who].emoji} ${NPCS[who].name} dropped by. +friendship`, 'good');
@@ -867,19 +1033,24 @@ export async function doNotice(): Promise<void> {
   const t = St.term(s);
   const d = St.dayInTerm(s);
   const upcoming: string[] = [];
-  if (d < 2) upcoming.push(`📝 Class test on Wednesday: ${SUBJECTS[St.testSubject(s)].name}`);
-  if (d < 4) upcoming.push('🎤 Club Showcase on Friday after school');
-  upcoming.push(d < 5 ? `⚔️ Finals vs ${FINALS[t].name} on Saturday` : '⚔️ Finals today!');
+  if (d < 2) upcoming.push(`📝 Midterm on Wednesday: ${COURSES[St.testCourse(s)].name}`);
+  if (d < 4) upcoming.push('🎤 Club Showcase on Friday after class');
+  upcoming.push(
+    d < DAYS_PER_TERM - 1 ? `⚔️ Finals vs ${FINALS[t].name} on the last day` : '⚔️ Finals today!',
+  );
   const timetable = St.timetable(s)
     .map((x, i) => {
-      const label =
-        x === 'FINAL'
-          ? '⚔️ Finals'
-          : x === 'TEST'
-            ? `📝 ${SUBJECTS[St.testSubject(s)].name} Test`
-            : `${SUBJECTS[x].icon} ${SUBJECTS[x].name}`;
+      if (i === 2) return `${PERIODS[i].time}: 🍱 Lunch`;
+      if (i > 3 || x === null) return '';
+      let label: string;
+      if (x === 'FINAL') label = '⚔️ Finals · Grand Exam Hall';
+      else {
+        const c = COURSES[x === 'TEST' ? St.testCourse(s) : x];
+        label = `${x === 'TEST' ? '📝 Midterm: ' : ''}${courseLabel(c)} · ${c.room} (${BUILDING_NAME[c.building]})`;
+      }
       return `${PERIODS[i].time}: ${label}`;
     })
+    .filter(Boolean)
     .join('<br>');
   const quests = s.quests
     .map((q) => {
@@ -890,11 +1061,22 @@ export async function doNotice(): Promise<void> {
   const rank = St.rankOf(s, t);
   await ui.info(
     '📌 Notice Board',
-    `<b>Today’s timetable</b><br>${timetable}<br><br><b>Coming up</b><br>${upcoming.join('<br>')}<br><br><b>Daily quests</b> (streak ${s.questStreak}🔥)<br>${quests}<br><br><b>Class rank this term:</b> ${rank ? `#${rank.rank} of ${rank.total}` : 'no grades yet'}`,
+    `<b>Today’s timetable</b><br>${timetable}<br><br><b>Coming up</b><br>${upcoming.join('<br>')}<br><br><b>Daily quests</b> (streak ${s.questStreak}🔥)<br>${quests}<br><br><b>Cohort rank this semester:</b> ${rank ? `#${rank.rank} of ${rank.total}` : 'no grades yet'}`,
   );
 }
 
 /* ============================== friends ============================== */
+/** "Sophomore · 🎓 a year above you" style description of how a friend relates to the player right now. */
+export function relationText(s: GameState, npc: NpcId): string {
+  const N = NPCS[npc];
+  const rel = St.relationTo(s, npc);
+  const diff = Math.abs(N.year - St.yearOf(s));
+  const yrs = `${diff} year${diff === 1 ? '' : 's'}`;
+  const how =
+    rel === 'senior' ? `🎓 ${yrs} above you` : rel === 'junior' ? `🌱 ${yrs} below you` : '🤝 Your year';
+  return `${YEAR_NAMES[N.year - 1]} · ${how}`;
+}
+
 async function runBeat(npc: NpcId, beat: (typeof NPCS)[NpcId]['beats'][number]): Promise<void> {
   const s = S();
   const N = NPCS[npc];
@@ -931,7 +1113,7 @@ export async function talkTo(npc: NpcId): Promise<void> {
   const canGift = f.gift !== s.day && ((s.items.snack ?? 0) > 0 || (s.items.drink ?? 0) > 0);
   const i = await ui.choice({
     title: `${N.emoji} ${N.name}`,
-    sub: `${N.role} · Friendship ${Math.round(f.rel)}/100${beat ? ` (next story at ${beat.at})` : ''}`,
+    sub: `${relationText(s, npc)}<br>${N.role} · ${N.major} · Friendship ${Math.round(f.rel)}/100${beat ? ` (next story at ${beat.at})` : ''}`,
     options: [
       {
         icon: '💬',
@@ -965,7 +1147,13 @@ async function chat(npc: NpcId): Promise<void> {
     ]);
     return;
   }
-  const T = N.talk[(s.day + npc.length) % N.talk.length];
+  // Every other chat is about being a senior, peer or junior; the rest are the friend's own lines.
+  const rel = St.relationTo(s, npc);
+  const pickN = s.day + npc.length;
+  const T =
+    pickN % 2 === 0
+      ? RELATION_TALK[rel][(s.day + f.story) % RELATION_TALK[rel].length]
+      : N.talk[pickN % N.talk.length];
   await ui.say([[N.name, T.line]]);
   const i = await ui.ask(s.name, 'How do you reply?', [T.a, T.b]);
   await ui.say([[N.name, i === 0 ? T.ra : T.rb]]);
@@ -975,6 +1163,24 @@ async function chat(npc: NpcId): Promise<void> {
   St.gainStat(s, 'cha', 0.2);
   const r = St.addXP(s, 10);
   ui.toast(`💖 ${N.name} +${Math.round(d)} · ✨ +${r.n} XP`, 'good');
+  if (rel === 'senior') {
+    // An older student shares what they have learned about one of this semester's subjects.
+    const ids = St.courses(s);
+    const c = COURSES[ids[(s.day + npc.length) % ids.length]];
+    const m = St.addMastery(s, c.area, 1.2);
+    ui.toast(
+      `🎓 Upperclassman tip for ${c.name}: ${SUBJECTS[c.area].icon} mastery +${m.toFixed(1)}`,
+      'good',
+      4200,
+    );
+  } else if (rel === 'junior') {
+    s.rep = clamp(s.rep + 2, 0, 100);
+    St.gainStat(s, 'cha', 0.15);
+    ui.toast(`🌱 ${N.name} is a younger student and looks up to you: +reputation`, 'good', 3600);
+  } else {
+    St.addStress(s, -3);
+    ui.toast(`🤝 Chatting with a classmate: −3 stress`, 'good', 3000);
+  }
   trackQuest('talk');
   await resolvePerks();
   await achievements();
@@ -1071,20 +1277,25 @@ async function runEvent(id: NonNullable<GameState['event']>['id']): Promise<void
   const s = S();
   Sound.sfx('whoosh');
   if (id === 'popquiz') {
-    const subj = SUBJECT_IDS[Math.floor(Math.random() * SUBJECT_IDS.length)];
-    const SB = SUBJECTS[subj];
-    await ui.banner('❗ POP QUIZ', 'Surprise! No warning…', 1300);
-    await ui.say([['Mr. Hale', `Everyone, clear your desks. Pop quiz — ${SB.name}!`]]);
-    const R = await runLesson('pop', subj, { count: 4, title: `❗ Pop Quiz: ${SB.name}` });
-    St.recordScore(s, 'class', subj, R.pct);
+    const ids = St.courses(s);
+    const c = COURSES[ids[Math.floor(Math.random() * ids.length)]];
+    const subj = c.area;
+    await ui.banner('❗ POP QUIZ', `${c.name}: surprise! No warning…`, 1300);
+    await ui.say([[c.prof, `Everyone, clear your desks. Pop quiz in ${c.name}!`]]);
+    const R = await runLesson('pop', subj, {
+      count: 4,
+      title: `❗ Pop Quiz: ${c.name}`,
+      tier: courseTier(s, c),
+    });
+    St.recordScore(s, 'class', c.id, R.pct);
     await gradedResult('pop', subj, R, { title: 'Pop quiz graded!', spend: false });
   } else if (id === 'wallet') {
     const i = await ui.ask('You', 'You spot a wallet on the ground. Inside: an ID card and 60 coins.', [
-      'Return it to the office',
+      'Return it to the registrar',
       'Keep the cash',
     ]);
     if (i === 0) {
-      await ui.say([['Office Clerk', 'The owner will be so relieved. Here’s a little thank-you!']]);
+      await ui.say([['Registrar Clerk', 'The owner will be so relieved. Here’s a little thank-you!']]);
       St.addCoins(s, 15);
       s.rep = clamp(s.rep + 8, 0, 100);
       St.gainStat(s, 'cha', 0.5);
@@ -1142,7 +1353,7 @@ async function runEvent(id: NonNullable<GameState['event']>['id']): Promise<void
     ui.toast('Free period! Use it however you like.', 'good', 4000);
   } else if (id === 'special') {
     s.canteenSpecial = true;
-    await ui.say([['Canteen Lady', 'Today’s special is on the house! Come eat, dears!']]);
+    await ui.say([['Café Manager', 'Today’s special is on the house! Come eat, everyone!']]);
     ui.toast('🍛 Free lunch + bonus energy at the canteen!', 'gold', 4500);
   } else if (id === 'fair') {
     s.clubBoost = true;
@@ -1162,10 +1373,10 @@ export async function doHome(): Promise<void> {
     const ok = await ui.confirm(
       'Go home now? You will skip the rest of the day’s activities.',
       'Go home',
-      'Stay at school',
+      'Stay on campus',
     );
     if (!ok) return;
-    s.period = 3;
+    s.period = EVENING_PERIOD - 1;
     await advancePeriod();
     return;
   }
@@ -1230,10 +1441,10 @@ export async function endDay(): Promise<void> {
   delete s.flags.sleep;
   Sound.sfx('bell');
   await ui.fade(true, '🌙 Day complete', `Day ${dayNo}`);
-  game.scene.setPeriod(5, true);
+  game.scene.setPeriod(LAST_PERIOD + 1, true);
   const rest = sleepKind === 'early' ? 70 : sleepKind === 'late' ? 35 : sleepKind === 'game' ? 50 : 55;
-  St.addEnergy(s, rest);
-  St.addStress(s, sleepKind === 'early' ? -15 : -8);
+  St.addEnergy(s, rest + St.friendBonus(s, 'restPlus'));
+  St.addStress(s, (sleepKind === 'early' ? -15 : -8) - St.friendBonus(s, 'stressRelief'));
   s.rested = sleepKind === 'early';
   // Subjects you did not touch today get rusty.
   const decayed: string[] = [];
@@ -1270,14 +1481,18 @@ export async function endDay(): Promise<void> {
   if (decayed.length) chips.push({ text: `📉 Rusty: ${decayed.join(' ')}`, cls: 'bad' });
 
   const nextDay: GameState = { ...s, day: s.day + 1 };
-  let tease = 'Another day at Last Bell High.';
+  let tease = 'Another day at Last Bell University.';
   if (!last) {
     if (St.isFinals(nextDay))
       tease = `⚔️ Tomorrow is FINALS DAY vs ${FINALS[St.term(nextDay)].name}! Rest well.`;
     else if (St.isTestDay(nextDay))
-      tease = `📝 Tomorrow: class test in ${SUBJECTS[St.testSubject(nextDay)].name}.`;
-    else if (St.isShowcase(nextDay)) tease = '🎤 Tomorrow: Club Showcase after school!';
-    else if (St.dayInTerm(nextDay) === 0 && s.day > 0) tease = '🌸 A fresh new term begins tomorrow!';
+      tease = `📝 Tomorrow: midterm in ${COURSES[St.testCourse(nextDay)].name}.`;
+    else if (St.isShowcase(nextDay)) tease = '🎤 Tomorrow: Club Showcase after class!';
+    else if (St.dayInTerm(nextDay) === 0 && s.day > 0)
+      tease =
+        St.term(nextDay) % 2 === 0
+          ? `🎓 Next up: ${YEAR_NAMES[St.yearOf(nextDay) - 1]} year begins tomorrow!`
+          : '🌸 A fresh new semester begins tomorrow!';
   }
   const trend =
     !rankNow || !s.daily.rankFrom
@@ -1288,8 +1503,8 @@ export async function endDay(): Promise<void> {
           ? ' ▼'
           : ' ＝';
   const rows: [string, string][] = [
-    ['Lessons', gr.length ? gr.map((x) => x.letter).join(' ') : '—'],
-    ['Class rank', rankNow ? `#${rankNow.rank} of ${rankNow.total}${trend}` : '—'],
+    ['Lectures & quizzes', gr.length ? gr.map((x) => x.letter).join(' ') : '—'],
+    ['Cohort rank', rankNow ? `#${rankNow.rank} of ${rankNow.total}${trend}` : '—'],
     ['Energy', `${Math.round(s.energy)} / 100`],
   ];
   await ui.results({
@@ -1312,18 +1527,22 @@ export async function endDay(): Promise<void> {
 async function termReport(): Promise<void> {
   const s = S();
   const t = St.term(s);
+  // Lectures you never attended count as a zero for the participation part of the grade.
+  for (const id of St.courses(s)) if (!s.records[t].class[id]?.length) St.recordScore(s, 'class', id, 0);
   const rk = St.rankOf(s, t);
   const rows: [string, string][] = [];
-  for (const sj of SUBJECT_IDS) {
-    const sc = St.subjectScore(s, t, sj);
+  for (const id of St.courses(s)) {
+    const c = COURSES[id];
+    const sc = St.courseScore(s, t, id);
     rows.push([
-      `${SUBJECTS[sj].icon} ${SUBJECTS[sj].name}`,
+      courseLabel(c),
       sc === null ? '—' : `${GRADES.find((g) => sc / 100 >= g.min)?.letter} · ${Math.round(sc)}%`,
     ]);
   }
   const overall = rk ? rk.score : 0;
   const g = gradeOf(overall / 100);
-  const comment = TEACHER_COMMENTS[g.letter][t % 2];
+  const gpa = St.gpaOf(overall);
+  const comment = PROFESSOR_COMMENTS[g.letter][t % 2];
   const bonus = rk ? (rk.rank === 1 ? 150 : rk.rank <= 3 ? 100 : rk.rank <= 8 ? 60 : 25) : 0;
   St.addCoins(s, bonus);
   s.termReports.push({ term: t, score: overall, rank: rk ? rk.rank : null });
@@ -1336,24 +1555,31 @@ async function termReport(): Promise<void> {
         .map((x, i) => `${['🥇', '🥈', '🥉'][i]} ${esc(x.name)} ${Math.round(x.score)}%`)
         .join(' &nbsp; ')
     : '';
+  rows.push(['GPA', `${gpa.toFixed(2)} / 4.00`]);
   rows.push(['Overall', `${Math.round(overall)}% · rank #${rk ? rk.rank : '—'} / ${rk ? rk.total : '—'}`]);
   await ui.results({
-    title: `📜 Term ${t + 1} Report Card`,
-    subtitle: esc(s.name),
+    title: `📜 Semester ${t + 1} Transcript`,
+    subtitle: `${esc(s.name)} · ${YEAR_NAMES[St.yearOf(s) - 1]} year`,
     letter: g.letter,
     color: g.min >= 0.7 ? '#2fd3a0' : '#ffb300',
     rows,
     chips: [{ text: `🪙 Rank bonus +${bonus}`, cls: 'coin' }],
-    note: `“${comment}” — Mr. Hale<br>${podium}`,
+    note: `“${comment}” — Academic Advisor<br>${podium}`,
     confetti: g.min >= 0.85,
   });
   await achievements();
 }
 
 /** Pick the graduation ending from the final stats. */
+/** Mean friendship across all sixteen students. */
+export function averageFriendship(s: GameState): number {
+  const all = Object.values(s.friends);
+  return all.reduce((a, f) => a + f.rel, 0) / Math.max(1, all.length);
+}
+
 export function pickEnding(s: GameState): { title: string; text: string } {
   const ov = St.overallRank(s);
-  const avgRel = Object.values(s.friends).reduce((a, f) => a + f.rel, 0) / 4;
+  const avgRel = averageFriendship(s);
   const goldCount = s.showcase.filter((x) => x.place === 'S').length;
   const rank = ov ? ov.rank : 25;
   const score = ov ? ov.score : 0;
@@ -1361,42 +1587,42 @@ export function pickEnding(s: GameState): { title: string; text: string } {
   if (rank === 1 && score >= 85) {
     return {
       title: '🎓 Valedictorian',
-      text: 'Top of the class! Rin shakes your hand, your name goes on the plaque, and the whole school applauds.',
+      text: 'Top of the graduating class! The Dean calls your name first, Rin shakes your hand, and the whole university applauds.',
     };
   }
   if (s.cheated >= 2 && rank <= 5) {
     return {
       title: '😎 Rebel Genius',
-      text: 'Rules were more like suggestions. Somehow, you still came out on top. The teachers are baffled.',
+      text: 'Rules were more like suggestions. Somehow, you still graduated near the top. The professors are baffled.',
     };
   }
   if (rank <= 3)
     return {
-      title: '🏅 Honor Student',
-      text: 'A podium finish! Colleges are already writing letters. Maya cries happy tears.',
+      title: '🏅 Summa Cum Laude',
+      text: 'Honours all round! Grad schools are already writing letters. Maya cries happy tears.',
     };
   if (clubTop >= 7 && goldCount >= 2) {
     return {
       title: '🏆 Club Champion',
-      text: 'The gym, the stage, and the lab all chant your name. Legends are made after school.',
+      text: 'The gym, the stage, and the lab all chant your name. Legends are made after class.',
     };
   }
-  if (avgRel >= 60)
+  if (avgRel >= 45)
     return {
       title: '💖 Social Star',
-      text: 'Everyone signs your yearbook twice. Friendships were your greatest score.',
+      text: 'Freshmen and seniors alike sign your graduation cap. Friendships were your greatest score.',
     };
   const first = s.termReports[0]?.rank;
-  const third = s.termReports[2]?.rank;
-  if (first && third && first - third >= 8) {
+  const lastRank = s.termReports[s.termReports.length - 1]?.rank;
+  if (first && lastRank && first - lastRank >= 8) {
     return {
       title: '🚀 Late Bloomer',
-      text: 'You climbed rank after rank. Nobody saw it coming except you.',
+      text: 'You climbed rank after rank over four years. Nobody saw it coming except you.',
     };
   }
   return {
     title: '🌱 Survivor',
-    text: 'You made it through the year. Not every story needs a trophy — you grew, and that counts.',
+    text: 'You made it through four years. Not every story needs a trophy — you grew, and that counts.',
   };
 }
 
@@ -1404,7 +1630,7 @@ async function ending(): Promise<void> {
   const s = S();
   const ov = St.overallRank(s);
   const meta = game.meta;
-  const avgRel = Object.values(s.friends).reduce((a, f) => a + f.rel, 0) / 4;
+  const avgRel = averageFriendship(s);
   const rank = ov ? ov.rank : 25;
   const score = ov ? ov.score : 0;
   const { title, text } = pickEnding(s);
@@ -1420,7 +1646,7 @@ async function ending(): Promise<void> {
   Sound.startMusic('explore');
   const rows: [string, string | number][] = [
     ['Final rank', `#${rank} of ${ov ? ov.total : 25}`],
-    ['Overall average', `${Math.round(score)}%`],
+    ['Overall average', `${Math.round(score)}% · GPA ${St.gpaOf(score).toFixed(2)}`],
     ['Level', s.level],
     ['Gold stars', `${s.stars.length} / 10`],
     ['Friends (avg)', `${Math.round(avgRel)} / 100`],
@@ -1428,7 +1654,7 @@ async function ending(): Promise<void> {
   ];
   const pick = await ui.results({
     title: '🎓 Graduation Day',
-    subtitle: `${esc(s.name)} · Class of Last Bell`,
+    subtitle: `${esc(s.name)} · Class of Last Bell University`,
     letter: title.split(' ')[0],
     color: '#ffb300',
     rows,
@@ -1471,31 +1697,48 @@ export async function beginDay(fresh: boolean): Promise<void> {
   await sleep(fresh ? 600 : 100);
   await ui.fade(false);
   Sound.startMusic('explore');
+  const newYear = St.dayInTerm(s) === 0 && St.term(s) % 2 === 0;
   await ui.banner(
-    St.isFinals(s) ? '⚔️ FINALS DAY' : WEEKDAYS[St.dayInTerm(s)],
-    `Term ${St.term(s) + 1} · ${WEATHER[s.weather]}`,
+    St.isFinals(s)
+      ? '⚔️ FINALS DAY'
+      : newYear
+        ? `🎓 ${YEAR_NAMES[St.yearOf(s) - 1]} Year`
+        : WEEKDAYS[St.dayInTerm(s)],
+    `Semester ${St.term(s) + 1} · ${WEATHER[s.weather]}`,
     1700,
   );
   if (s.day === 0) {
     await ui.say([
       [
-        'Principal Hale',
-        `Welcome to Last Bell High, ${s.name}! Three terms, eighteen days, and a final exam at the end of each term.`,
+        'Dean Hale',
+        `Welcome to Last Bell University, ${s.name}! Four years, eight semesters, and a final exam at the end of each one.`,
       ],
       [
-        'Principal Hale',
-        'Walk to the Main Building when classes begin. Stand by a door and press E (or tap the button) to interact.',
+        'Dean Hale',
+        'Each lecture meets in its own classroom. Walk to the building, step inside, find your seat and press E to sit down.',
       ],
       [
-        'Principal Hale',
-        'Outside class you are free: study, join a club, eat lunch, make friends. Watch your energy!',
+        'Dean Hale',
+        'Between lectures you are free: study, join a club, eat lunch, make friends. Watch your energy!',
       ],
-      ['Principal Hale', 'And between us… there are gold stars hidden all over campus. Good luck!'],
+      [
+        'Dean Hale',
+        'Students from every year hang around campus. Seniors give advice, juniors look up to you. Say hello to everyone!',
+      ],
+      ['Dean Hale', 'And between us… there are gold stars hidden all over campus. Good luck!'],
+    ]);
+  } else if (newYear) {
+    await ui.say([
+      [
+        'Dean Hale',
+        `Welcome back! You are a ${YEAR_NAMES[St.yearOf(s) - 1].toLowerCase()} now. New courses, new professors, new juniors looking up to you.`,
+      ],
     ]);
   } else if (s.questStreak >= 2) {
     ui.toast(`🔥 ${s.questStreak}-day quest streak! Finish all quests again for a bonus.`, 'gold', 4200);
   }
-  if (St.isTestDay(s)) ui.toast(`📝 Test today: ${SUBJECTS[St.testSubject(s)].name} (period 2)`, 'bad', 5000);
+  if (St.isTestDay(s))
+    ui.toast(`📝 Midterm today: ${COURSES[St.testCourse(s)].name} (period 2)`, 'bad', 5000);
   if (s.rested) ui.toast('😊 Well rested: +2s per question today', 'good', 4200);
   await maybeEvent();
 }
@@ -1527,27 +1770,38 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
     const why = ok
       ? ''
       : s.detention
-        ? 'You are in detention today.'
+        ? 'You are on a disciplinary hold today.'
         : tired
           ? 'Too tired for club. Eat or rest first.'
           : inClass
             ? 'Class is in session!'
             : k === 'lunch'
-              ? 'Clubs start after school.'
+              ? 'Clubs start after class.'
               : 'Closed for the evening.';
     return E(`Join ${C.name}: ${C.game}`, () => doClub(id), ok, why);
   };
-  const subjectName = St.classSubject(s) ? SUBJECTS[St.classSubject(s) as SubjectId].name : '';
+  // Which building holds the current lecture (the exam hall for finals), if any.
+  const spec = inClass ? classroomSpec(s) : null;
+  const here = (b: ClassBuilding): boolean => !!spec && spec.building === b;
+  const enterLabel = spec
+    ? k === 'final'
+      ? `Enter the ${spec.title}`
+      : `${k === 'test' ? 'Midterm: ' : ''}Enter ${spec.title} (${spec.sub.replace(/ · .*/, '')})`
+    : '';
+  const enterWhy = (b: ClassBuilding): string =>
+    spec
+      ? `Your lecture is in ${BUILDING_NAME[spec.building]} (${spec.room}), not here.`
+      : free
+        ? 'Lectures are over for now.'
+        : b === 'main'
+          ? 'Not time for class yet.'
+          : 'Closed for the evening.';
   return {
     main: E(
-      k === 'test'
-        ? 'Take the class test'
-        : k === 'final'
-          ? 'Enter the exam hall'
-          : `Attend ${subjectName} class`,
-      k === 'test' ? doTest : k === 'final' ? doFinal : doClass,
-      inClass,
-      free ? 'Lessons are over for now.' : 'Not time for class yet.',
+      here('main') ? enterLabel : 'Hale Hall (lecture halls)',
+      enterClassroom,
+      here('main'),
+      enterWhy('main'),
     ),
     library: E(
       'Study in the Library',
@@ -1561,7 +1815,7 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
       free || k === 'evening',
       'Class is in session!',
     ),
-    lab: club('science'),
+    lab: here('lab') ? E(enterLabel, enterClassroom, true) : club('science'),
     music: club('music'),
     gym: club('sports'),
     roof: E(
@@ -1577,6 +1831,38 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
       'You can’t leave during class.',
     ),
     notice: E('Check the notice board', doNotice),
+  };
+}
+
+/** Things the player can use inside a classroom. */
+export function roomInteractions(): { seat: Interaction; exit: Interaction; prof: Interaction } {
+  const s = S();
+  const k = St.periodKind(s);
+  const inClass = k === 'class' || k === 'test' || k === 'final';
+  const spec = classroomSpec(s);
+  const name = (() => {
+    const id = St.classCourse(s);
+    return id ? COURSES[id].name : 'the exam';
+  })();
+  return {
+    seat: {
+      label:
+        k === 'test'
+          ? 'Sit down for the midterm'
+          : k === 'final'
+            ? 'Take your seat for finals'
+            : `Sit down: ${name}`,
+      run: attendClass,
+      enabled: inClass,
+      why: 'No lecture is scheduled right now.',
+    },
+    exit: { label: 'Leave the room', run: leaveClassroom, enabled: true, why: '' },
+    prof: {
+      label: `Talk to ${spec?.prof ?? 'the professor'}`,
+      run: talkProfessor,
+      enabled: true,
+      why: '',
+    },
   };
 }
 

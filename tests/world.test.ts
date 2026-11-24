@@ -178,3 +178,100 @@ describe('time-of-day lighting', () => {
     expect(rain.sunCol[0]).toBeLessThan(sunny.sunCol[0]);
   });
 });
+
+/* ------------------------------ classroom interiors ------------------------------ */
+import { createRooms } from '../src/render/rooms';
+import type { RoomInterior } from '../src/render/rooms';
+
+const rooms = createRooms();
+const PLAYER_R = 0.42;
+
+function insideBlocked(room: RoomInterior, x: number, z: number): boolean {
+  const b = room.bounds;
+  if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) return true;
+  return !!blocked(room.colliders, x, z, PLAYER_R);
+}
+
+/** Flood-fill the room floor from the door and report whether (x, z) can be approached within `within`. */
+function walkable(room: RoomInterior, tx: number, tz: number, within: number): boolean {
+  const step = 0.3;
+  const key = (i: number, j: number) => i * 10000 + j;
+  const ox = room.bounds.x0;
+  const oz = room.bounds.z0;
+  const W = Math.ceil((room.bounds.x1 - ox) / step);
+  const D = Math.ceil((room.bounds.z1 - oz) / step);
+  const start = [Math.round((room.spawn.x - ox) / step), Math.round((room.spawn.z - oz) / step)];
+  const seen = new Set<number>([key(start[0], start[1])]);
+  const queue = [start];
+  while (queue.length) {
+    const [i, j] = queue.pop()!;
+    const x = ox + i * step;
+    const z = oz + j * step;
+    if (Math.hypot(x - tx, z - tz) <= within) return true;
+    for (const [di, dj] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const ni = i + di;
+      const nj = j + dj;
+      if (ni < 0 || nj < 0 || ni > W || nj > D || seen.has(key(ni, nj))) continue;
+      if (insideBlocked(room, ox + ni * step, oz + nj * step)) continue;
+      seen.add(key(ni, nj));
+      queue.push([ni, nj]);
+    }
+  }
+  return false;
+}
+
+describe('classroom interiors', () => {
+  it('builds all four room kinds with finite geometry, far away from the campus', () => {
+    expect(Object.keys(rooms).sort()).toEqual(['computer', 'lab', 'lecture', 'seminar']);
+    for (const r of Object.values(rooms)) {
+      const mesh = r.group.children[0] as unknown as { geometry: typeof campus.solid };
+      const pos = mesh.geometry.getAttribute('position');
+      expect(pos.count, r.kind).toBeGreaterThan(100);
+      expect(
+        pos.array.every((v) => Number.isFinite(v)),
+        r.kind,
+      ).toBe(true);
+      // Outside the campus fence so the outdoor scene never overlaps a room.
+      expect(Math.abs(r.centre.z), r.kind).toBeGreaterThan(150);
+    }
+  });
+
+  it('has enough seats and a clear spawn point in every room', () => {
+    for (const r of Object.values(rooms)) {
+      expect(r.seats.length, r.kind).toBeGreaterThanOrEqual(10);
+      expect(r.playerSeat, r.kind).toBeLessThan(r.seats.length);
+      expect(insideBlocked(r, r.spawn.x, r.spawn.z), `${r.kind} spawn`).toBe(false);
+      expect(insideBlocked(r, r.door.x, r.door.z), `${r.kind} door`).toBe(false);
+    }
+  });
+
+  it('lets the player walk from the door to their seat, the professor and back to the exit', () => {
+    for (const r of Object.values(rooms)) {
+      const seat = r.seats[r.playerSeat];
+      expect(walkable(r, seat.x, seat.z, 2.2), `${r.kind} seat`).toBe(true);
+      expect(walkable(r, r.prof.x, r.prof.z, 2.3), `${r.kind} professor`).toBe(true);
+      expect(walkable(r, r.door.x, r.door.z, 1.9), `${r.kind} exit`).toBe(true);
+    }
+  });
+
+  it('does not trigger a prompt the moment you walk in', () => {
+    for (const r of Object.values(rooms)) {
+      const seat = r.seats[r.playerSeat];
+      expect(Math.hypot(r.spawn.x - r.door.x, r.spawn.z - r.door.z), `${r.kind} exit`).toBeGreaterThan(1.9);
+      expect(Math.hypot(r.spawn.x - seat.x, r.spawn.z - seat.z), `${r.kind} seat`).toBeGreaterThan(2.2);
+      expect(Math.hypot(r.spawn.x - r.prof.x, r.spawn.z - r.prof.z), `${r.kind} prof`).toBeGreaterThan(2.3);
+    }
+  });
+
+  it('seats every student in a unique chair', () => {
+    for (const r of Object.values(rooms)) {
+      const keys = r.seats.map((s) => `${s.x.toFixed(2)},${s.z.toFixed(2)}`);
+      expect(new Set(keys).size, r.kind).toBe(keys.length);
+    }
+  });
+});

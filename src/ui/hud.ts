@@ -69,7 +69,7 @@ export const hud = {
     if (!built) build();
     $('#h-day').innerHTML = `📅 ${i.dayTxt}`;
     $('#h-per').innerHTML = `${i.periodIcon} ${i.periodTxt}&nbsp;`;
-    $('#h-periods').innerHTML = [0, 1, 2, 3, 4]
+    $('#h-periods').innerHTML = [0, 1, 2, 3, 4, 5]
       .map((p) => `<i class="${p < i.period ? 'done' : p === i.period ? 'now' : ''}"></i>`)
       .join('');
     $('#h-weather').textContent = i.weather;

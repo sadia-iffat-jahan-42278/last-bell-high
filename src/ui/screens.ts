@@ -14,7 +14,7 @@ export function titleScreen(opts: { hasSave: boolean; saveInfo: string }): Promi
   const t = el(
     'div',
     'title-screen',
-    `<div class="logo">LAST BELL<br><span>HIGH</span></div><div class="tagline">3 terms. 18 days. One unforgettable school year.</div><div class="titlebtns"></div><div class="credits">A browser 3D game · WASD / touch · progress saves automatically</div>`,
+    `<div class="logo">LAST BELL<br><span style="font-size:0.62em;letter-spacing:4px">UNIVERSITY</span></div><div class="tagline">4 years. 8 semesters. 71 courses. One unforgettable degree.</div><div class="titlebtns"></div><div class="credits">A browser 3D game · WASD / touch · progress saves automatically</div>`,
   );
   host.appendChild(t);
   const row = $('.titlebtns', t);
@@ -38,9 +38,11 @@ export function titleScreen(opts: { hasSave: boolean; saveInfo: string }): Promi
 export function helpScreen(): Promise<void> {
   return ui.info(
     'How to play',
-    `<b>Goal:</b> survive three school terms, ace your exams, make friends and graduate with the best rank you can.<br><br>
-    🕘 <b>Every day has 5 periods</b>: two classes, lunch, after school and evening. Walk to the right building and press <b>E</b> (or tap the button).<br>
-    🔔 <b>Class</b> and <b>tests</b> are quick quizzes. Keep a streak for a combo bonus! <b>Finals Day</b> ends each term with a boss fight.<br>
+    `<b>Goal:</b> survive four years (8 semesters), ace your courses, make friends in every year and graduate with the best rank you can.<br><br>
+    🕘 <b>Every day has 6 periods</b>: three lectures, lunch, after class and evening. Check the 📌 notice board for today’s rooms.<br>
+    🏫 <b>Lectures are held in real classrooms.</b> Walk to the building, press <b>E</b> at the door, find the glowing seat, sit down (<b>E</b>) and the lesson starts. Chat with the professor first for a study tip.<br>
+    🔔 <b>Lectures</b> and <b>midterms</b> are quick quizzes. Keep a streak for a combo bonus! <b>Finals Day</b> ends each semester with a boss fight.<br>
+    🎓 <b>Meet every year.</b> Upperclassmen give advice, younger students look up to you, and your year changes as you progress.<br>
     🎵 <b>Clubs</b> (gym, music room, lab) are mini-games that raise your stats and earn coins.<br>
     ⚡ <b>Energy & stress</b> matter: tired students answer slower. Eat, relax on the rooftop and sleep.<br>
     💬 <b>Friends</b> unlock story scenes and permanent bonuses. Gifts help!<br>

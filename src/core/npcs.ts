@@ -1,13 +1,16 @@
+import { NPCS_MORE } from './npcsMore';
 import type { Npc, NpcId } from './types';
 
-/** Friends: dialogue, story beats and the perks they unlock. */
-export const NPCS: Record<NpcId, Npc> = {
+/** Friends: dialogue, story beats and the perks they unlock. Four per academic year. */
+const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
   maya: {
     name: 'Maya',
+    year: 1,
+    major: 'Psychology',
     role: 'Study Buddy',
     emoji: '📚',
     color: '#b28cff',
-    bio: 'Class 2-B. Color-codes everything. Quietly brilliant, loudly nervous.',
+    bio: 'Freshman psychology major. Color-codes everything. Quietly brilliant, loudly nervous.',
     perks: [
       { need: 2, text: 'Study Buddy: the first question of every quiz is auto-hinted.' },
       { need: 3, text: 'Study Group: +15% XP from library & late-night study.' },
@@ -28,7 +31,7 @@ export const NPCS: Record<NpcId, Npc> = {
         rb: 'That… might be my new coping strategy.',
       },
       {
-        line: 'The library’s quiet zone is the best place in school. Don’t tell anyone.',
+        line: 'The library’s quiet zone is the best place on campus. Don’t tell anyone.',
         a: 'Your secret’s safe.',
         ra: 'I knew I could trust you.',
         b: 'Too late, I made a poster.',
@@ -107,6 +110,8 @@ export const NPCS: Record<NpcId, Npc> = {
   },
   kai: {
     name: 'Kai',
+    year: 2,
+    major: 'Sports Science',
     role: 'Sports Captain',
     emoji: '🏀',
     color: '#ff7a59',
@@ -205,6 +210,8 @@ export const NPCS: Record<NpcId, Npc> = {
   },
   zoe: {
     name: 'Zoe',
+    year: 3,
+    major: 'Music Performance',
     role: 'Music Prodigy',
     emoji: '🎧',
     color: '#35d9a0',
@@ -307,10 +314,12 @@ export const NPCS: Record<NpcId, Npc> = {
   },
   rin: {
     name: 'Rin',
+    year: 4,
+    major: 'Mathematics',
     role: 'Rival',
     emoji: '🏆',
     color: '#f0b429',
-    bio: 'Top of the class. Studies until 2 a.m. Pretends not to care what you scored.',
+    bio: 'Senior prodigy, top of the department. Studies until 2 a.m. Pretends not to care what you scored.',
     perks: [
       { need: 2, text: 'Rival Notes: +3s per question on tests.' },
       { need: 3, text: 'Final Edge: +1 heart in the finals boss fight.' },
@@ -338,7 +347,7 @@ export const NPCS: Record<NpcId, Npc> = {
         rb: 'Your jokes are improving. Tragically.',
       },
       {
-        line: 'Why do you always smile before a test?',
+        line: 'Why do you always smile before a midterm?',
         a: 'Confidence.',
         ra: 'Interesting strategy. Is it working?',
         b: 'Nerves. Strategically hidden.',
@@ -350,10 +359,13 @@ export const NPCS: Record<NpcId, Npc> = {
         at: 15,
         title: 'The Wager',
         scene: [
-          ['Rin', 'You scored well. Well enough that I noticed. Congratulations. It won’t happen twice.'],
           [
             'Rin',
-            'Let’s make it interesting. Beat my score on the next test and I’ll buy your lunch. Lose, and you buy mine.',
+            'You scored well. Well enough that a senior noticed. Congratulations. It won’t happen twice.',
+          ],
+          [
+            'Rin',
+            'Let’s make it interesting. Beat my score on the next midterm and I’ll buy your lunch. Lose, and you buy mine.',
           ],
         ],
         prompt: 'Rin holds out a hand without looking at you.',
@@ -405,3 +417,5 @@ export const NPCS: Record<NpcId, Npc> = {
     ],
   },
 };
+
+export const NPCS: Record<NpcId, Npc> = { ...CORE, ...NPCS_MORE };

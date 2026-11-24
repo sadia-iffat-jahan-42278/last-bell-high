@@ -9,22 +9,25 @@ import {
   Mesh,
   type MeshLambertMaterial,
 } from 'three';
-import { NPCS, PERIODS } from './core/data';
+import { AFTER_PERIOD, EVENING_PERIOD, NPCS, PERIODS, YEAR_NAMES } from './core/data';
 import * as St from './core/state';
-import type { Look, NpcId, Weather, ZoneId } from './core/types';
+import type { Look, NpcId, RoomKind, Weather, ZoneId } from './core/types';
 import { mulberry32, type Rng } from './core/util';
 import {
   buildingInteractions,
   collectStar,
   game,
   objectiveTarget,
+  roomInteractions,
   type Interaction,
+  type RoomSpec,
   type SceneHooks,
 } from './game';
 import type { Input } from './input';
 import { createCampus, type Campus } from './render/campus';
-import { Character, NPC_LOOKS, randomLook } from './render/characters';
+import { Character, NPC_LOOKS, professorLook, randomLook } from './render/characters';
 import { SH, part, setColor } from './render/parts';
+import { createRooms, type RoomInterior } from './render/rooms';
 import { GameView, type CameraRig } from './render/view';
 import { $, $maybe, el } from './ui/dom';
 import { hud } from './ui/hud';
@@ -47,7 +50,20 @@ export type Mode = 'boot' | 'title' | 'creator' | 'play';
 export type Target =
   | { kind: 'building'; id: ZoneId; info: Interaction }
   | { kind: 'npc'; id: NpcId }
-  | { kind: 'cat'; i: number };
+  | { kind: 'cat'; i: number }
+  | { kind: 'seat' | 'exit' | 'prof'; info: Interaction };
+
+/** The classroom the player is currently inside. */
+interface ActiveRoom {
+  spec: RoomSpec;
+  interior: RoomInterior;
+  seated: boolean;
+}
+
+/** Interior camera: a steep, close follow view kept inside the room so walls never block it. */
+const ROOM_PITCH = 0.85;
+const ROOM_DIST = 6.5;
+const CLASSMATES = 16;
 
 interface NpcActor {
   id: NpcId;
@@ -82,6 +98,8 @@ interface CatActor {
 }
 
 const PERIOD_HOURS = [...PERIODS.map((p) => p.hour), 21.5];
+/** Fixed bright "classroom lighting" used indoors regardless of the hour or weather. */
+const INDOOR_HOUR = 13;
 const RING_ZONES: ZoneId[] = ['main', 'library', 'canteen', 'lab', 'music', 'gym', 'roof', 'gate', 'notice'];
 const CAT_COLORS = [0xe0883a, 0x8a8f9a, 0x2c2c34];
 const RAIN_DROPS = 420;
@@ -116,6 +134,13 @@ export class Scene3D implements SceneHooks {
   private readonly cats: CatActor[] = [];
   private readonly rings = {} as Record<ZoneId, Mesh>;
   private readonly beacon: Mesh;
+  private readonly rooms: Record<RoomKind, RoomInterior>;
+  private readonly professor: Character;
+  private readonly classmates: Character[] = [];
+  private readonly seatRing: Mesh;
+  private readonly exitRing: Mesh;
+  /** Set while the player is inside a classroom. */
+  private room: ActiveRoom | null = null;
   private readonly rain: LineSegments;
   private readonly rainData = new Float32Array(RAIN_DROPS * 3);
   private readonly rainPos = new Float32Array(RAIN_DROPS * 2 * 3);
@@ -148,8 +173,25 @@ export class Scene3D implements SceneHooks {
       this.npcs[id] = { id, c, x: 0, z: 0, greeted: false };
       this.view.scene.add(c.root);
     }
+    this.rooms = createRooms();
+    for (const r of Object.values(this.rooms)) this.view.scene.add(r.group);
+    this.professor = new Character(professorLook('Professor'));
+    this.professor.root.visible = false;
+    this.view.scene.add(this.professor.root);
+    for (let i = 0; i < CLASSMATES; i++) {
+      const c = new Character(randomLook(mulberry32(300 + i)));
+      c.root.visible = false;
+      this.classmates.push(c);
+      this.view.scene.add(c.root);
+    }
+    this.seatRing = part(SH.ring, { p: [0, 0.12, 0], s: [0.9, 1, 0.9], t: 0xffc933, alpha: 0.9, add: true });
+    this.exitRing = part(SH.ring, { p: [0, 0.12, 0], s: [1.1, 1, 1.1], t: 0x2fd3a0, alpha: 0.8, add: true });
+    this.seatRing.visible = false;
+    this.exitRing.visible = false;
+    this.view.scene.add(this.seatRing, this.exitRing);
+
     const rng = mulberry32(5);
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 5; i++) {
       const c = new Character(randomLook(rng));
       c.root.visible = false;
       const [x, z] = CROWD_POINTS[i];
@@ -195,21 +237,27 @@ export class Scene3D implements SceneHooks {
 
   /* ======================= SceneHooks (used by the rules layer) ======================= */
   setPeriod(p: number, instant = false): void {
+    this.leaveRoom();
     this.tod.target = PERIOD_HOURS[p];
     if (instant) this.tod.hour = this.tod.target;
+    this.placeActors(p, true);
+  }
+
+  /** Show friends and the wandering crowd for the current period. `reset` also puts the crowd on fresh waypoints. */
+  private placeActors(p: number, reset: boolean): void {
     const s = game.s;
     for (const n of Object.values(this.npcs)) {
       const spot = this.npcSpot(n.id);
-      n.c.root.visible = !!spot;
+      n.c.root.visible = !!spot && !this.room;
       if (spot) {
         [n.x, n.z] = spot;
         n.greeted = false;
       }
     }
-    const crowdVisible = !!(s && St.isFreeKind(St.periodKind(s)) && p < 4);
+    const crowdVisible = !!(s && St.isFreeKind(St.periodKind(s)) && p < EVENING_PERIOD) && !this.room;
     this.crowd.forEach((c, i) => {
       c.c.root.visible = crowdVisible;
-      if (crowdVisible) {
+      if (crowdVisible && reset) {
         const [x, z] = CROWD_POINTS[(i * 2 + p) % CROWD_POINTS.length];
         c.x = c.tx = x;
         c.z = c.tz = z;
@@ -217,15 +265,112 @@ export class Scene3D implements SceneHooks {
       }
     });
   }
+
   setWeather(w: Weather): void {
     this.weather = w;
   }
   teleportToStart(): void {
+    this.leaveRoom();
     this.player.x = START.x;
     this.player.z = START.z;
     this.vel = [0, 0];
     this.input.camYaw = 0;
     this.camTarget = [this.player.x, 1.4, this.player.z];
+  }
+
+  /* ---------------- classrooms ---------------- */
+  /** Walk into a classroom: the player appears at its door and the professor and classmates take their places. */
+  enterRoom(spec: RoomSpec): void {
+    this.leaveRoom();
+    const interior = this.rooms[spec.kind];
+    this.room = { spec, interior, seated: false };
+    interior.group.visible = true;
+    this.player.x = interior.spawn.x;
+    this.player.z = interior.spawn.z;
+    this.vel = [0, 0];
+    this.input.camYaw = 0;
+    this.camTarget = [this.player.x, 1.2, this.player.z];
+    this.playerChar.setSeated(false);
+    this.playerChar.yaw = 0;
+
+    this.professor.setLook(professorLook(spec.prof));
+    this.professor.setSeated(false);
+    const pp = interior.prof;
+    this.professor.root.position.set(pp.x, 0, pp.z);
+    this.professor.yaw = pp.yaw;
+    this.professor.root.rotation.y = pp.yaw;
+    this.professor.root.visible = true;
+
+    // Classmates fill most of the other seats, chosen and dressed from the room's seed.
+    const rng = mulberry32(spec.seed);
+    const free = interior.seats.map((_, i) => i).filter((i) => i !== interior.playerSeat);
+    for (let i = free.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [free[i], free[j]] = [free[j], free[i]];
+    }
+    const count = Math.min(CLASSMATES, Math.ceil(free.length * 0.7));
+    this.classmates.forEach((c, i) => {
+      if (i >= count) {
+        c.root.visible = false;
+        return;
+      }
+      const seat = interior.seats[free[i]];
+      c.setLook(randomLook(mulberry32(spec.seed + i * 977)));
+      c.setSeated(true);
+      c.root.position.set(seat.x, 0, seat.z);
+      c.yaw = seat.yaw;
+      c.root.rotation.y = seat.yaw;
+      c.root.visible = true;
+    });
+    for (const n of Object.values(this.npcs)) n.c.root.visible = false;
+    for (const c of this.crowd) c.c.root.visible = false;
+    this.seatRing.visible = true;
+    this.exitRing.visible = true;
+    const seat = interior.seats[interior.playerSeat];
+    this.seatRing.position.set(seat.x, 0.12, seat.z);
+    this.exitRing.position.set(interior.door.x, 0.12, interior.door.z);
+  }
+
+  /** Public alias used by the rules layer when the player leaves by the door. */
+  exitRoom(): void {
+    const r = this.room;
+    this.leaveRoom();
+    if (r) this.placeActors(game.s?.period ?? 0, false);
+  }
+
+  /** Stand the player back outside the building the room belongs to. */
+  private leaveRoom(): void {
+    const r = this.room;
+    if (!r) return;
+    r.interior.group.visible = false;
+    this.room = null;
+    this.professor.root.visible = false;
+    for (const c of this.classmates) c.root.visible = false;
+    this.seatRing.visible = false;
+    this.exitRing.visible = false;
+    this.playerChar.setSeated(false);
+    const z = ZONES[r.spec.building];
+    this.player.x = z.x;
+    this.player.z = z.z;
+    this.vel = [0, 0];
+    this.input.camYaw = 0;
+    this.camTarget = [this.player.x, 1.4, this.player.z];
+    this.playerChar.root.position.set(this.player.x, 0, this.player.z);
+  }
+
+  /** Move the player onto their chair and sit down facing the board. */
+  sitDown(): void {
+    const r = this.room;
+    if (!r) return;
+    const seat = r.interior.seats[r.interior.playerSeat];
+    r.seated = true;
+    this.player.x = seat.x;
+    this.player.z = seat.z;
+    this.vel = [0, 0];
+    this.playerChar.setSeated(true);
+    this.playerChar.yaw = seat.yaw;
+    this.playerChar.root.rotation.y = seat.yaw;
+    this.seatRing.visible = false;
   }
   refreshCollectibles(): void {
     const s = game.s;
@@ -252,8 +397,9 @@ export class Scene3D implements SceneHooks {
   private npcSpot(id: NpcId): [number, number] | null {
     const s = game.s;
     if (!s) return null;
-    if (!St.isFreeKind(St.periodKind(s))) return null;
-    return HANGOUTS[id][s.period === 3 ? 'after' : 'lunch'];
+    if (!St.isFreeKind(St.periodKind(s)) || s.period >= EVENING_PERIOD) return null;
+    if (!St.npcPresent(s, id)) return null;
+    return HANGOUTS[id][s.period === AFTER_PERIOD ? 'after' : 'lunch'];
   }
 
   private buildStars(): void {
@@ -300,7 +446,11 @@ export class Scene3D implements SceneHooks {
       this.campus.update(dt, this.time, L);
       this.updateRain(dt);
       this.animate(dt);
-      this.view.applyLight(L, this.mode === 'title' ? { x: 0, z: 6 } : this.player);
+      // Indoors: bright, steady classroom lighting whatever the weather or time of day.
+      this.view.applyLight(
+        this.room ? lightAt(INDOOR_HOUR, 'sunny') : L,
+        this.mode === 'title' ? { x: 0, z: 6 } : this.player,
+      );
       this.view.render(this.cam);
       this.updateLabels();
       this.minimapTimer += dt;
@@ -341,6 +491,10 @@ export class Scene3D implements SceneHooks {
 
     this.playerChar.root.visible = true;
     const blocked = this.isBlocked();
+    if (this.room) {
+      this.updateRoom(dt, blocked);
+      return;
+    }
     const { keys, joy } = input;
     let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + joy.x;
     let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + joy.y;
@@ -400,6 +554,86 @@ export class Scene3D implements SceneHooks {
     }
   }
 
+  /** Player movement, camera and prompts while inside a classroom. */
+  private updateRoom(dt: number, blocked: boolean): void {
+    const room = this.room;
+    if (!room) return;
+    const { input, player, cam } = this;
+    const { keys, joy } = input;
+    const { interior } = room;
+    let yaw = input.camYaw;
+    if (room.seated || blocked) {
+      this.vel[0] *= 0.6;
+      this.vel[1] *= 0.6;
+    } else {
+      if (keys.q) input.camYaw += dt * 1.8;
+      if (keys.z) input.camYaw -= dt * 1.8;
+      yaw = input.camYaw;
+      let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + joy.x;
+      let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + joy.y;
+      const len = Math.hypot(ix, iy);
+      if (len > 1) {
+        ix /= len;
+        iy /= len;
+      }
+      const speed = 4.6 * (keys.shift ? 1.4 : 1);
+      const fx = -Math.sin(yaw);
+      const fz = -Math.cos(yaw);
+      const rx = Math.cos(yaw);
+      const rz = -Math.sin(yaw);
+      this.vel[0] += ((rx * ix + fx * iy) * speed - this.vel[0]) * Math.min(1, dt * 12);
+      this.vel[1] += ((rz * ix + fz * iy) * speed - this.vel[1]) * Math.min(1, dt * 12);
+      player.x += this.vel[0] * dt;
+      player.z += this.vel[1] * dt;
+      resolveCollisions(interior.colliders, player, 0.42, interior.bounds);
+    }
+    const spd = Math.hypot(this.vel[0], this.vel[1]);
+    if (room.seated) {
+      this.playerChar.root.position.set(player.x, 0, player.z);
+    } else {
+      if (spd > 0.4) this.playerChar.faceDir(this.vel[0], this.vel[1], dt);
+      this.playerChar.root.position.set(player.x, 0, player.z);
+    }
+    this.playerChar.update(dt, room.seated ? 0 : spd, this.time);
+
+    const ct = this.camTarget;
+    ct[0] += (player.x - ct[0]) * Math.min(1, dt * 9);
+    ct[2] += (player.z - ct[2]) * Math.min(1, dt * 9);
+    ct[1] = 1.2;
+    const cp = Math.cos(ROOM_PITCH);
+    cam.target = [ct[0], ct[1], ct[2]];
+    // Keep the eye inside the room (it is above the wall tops, so the view is never blocked).
+    const b = interior.bounds;
+    cam.eye = [
+      Math.max(b.x0, Math.min(b.x1, ct[0] + Math.sin(yaw) * cp * ROOM_DIST)),
+      ct[1] + Math.sin(ROOM_PITCH) * ROOM_DIST,
+      Math.max(b.z0, Math.min(b.z1, ct[2] + Math.cos(yaw) * cp * ROOM_DIST)),
+    ];
+
+    // What can the player use here?
+    const inter = roomInteractions();
+    let best: Target | null = null;
+    let bestRatio = Infinity;
+    const consider = (t: Target, x: number, z: number, r: number) => {
+      const d = Math.hypot(player.x - x, player.z - z);
+      if (d < r && d / r < bestRatio) {
+        bestRatio = d / r;
+        best = t;
+      }
+    };
+    if (!room.seated) {
+      const seat = interior.seats[interior.playerSeat];
+      consider({ kind: 'seat', info: inter.seat }, seat.x, seat.z, 2.2);
+      consider({ kind: 'exit', info: inter.exit }, interior.door.x, interior.door.z, 1.9);
+      consider({ kind: 'prof', info: inter.prof }, interior.prof.x, interior.prof.z, 2.3);
+    }
+    this.target = blocked ? null : best;
+    const t = this.target as Target | null;
+    if (!t) hud.setPrompt(null);
+    else if (t.kind === 'seat' || t.kind === 'exit' || t.kind === 'prof')
+      hud.setPrompt({ text: t.info.label, enabled: t.info.enabled, why: t.info.enabled ? '' : t.info.why });
+  }
+
   /** Pick the nearest interactable (relative to its radius) and show its prompt. */
   private updateTarget(blocked: boolean): void {
     const { player } = this;
@@ -427,8 +661,12 @@ export class Scene3D implements SceneHooks {
     } else if (t.kind === 'building') {
       hud.setPrompt({ text: t.info.label, enabled: t.info.enabled, why: t.info.enabled ? '' : t.info.why });
     } else if (t.kind === 'npc') {
-      hud.setPrompt({ text: `Talk to ${NPCS[t.id].name}`, enabled: true });
-    } else {
+      const N = NPCS[t.id];
+      const s = game.s;
+      const rel = s ? St.relationTo(s, t.id) : 'peer';
+      const tag = rel === 'senior' ? '🎓 above you' : rel === 'junior' ? '🌱 below you' : '🤝 your year';
+      hud.setPrompt({ text: `Talk to ${N.name} (${YEAR_NAMES[N.year - 1]}, ${tag})`, enabled: true });
+    } else if (t.kind === 'cat') {
       hud.setPrompt({ text: 'Pet the cat', enabled: true });
     }
   }
@@ -497,8 +735,16 @@ export class Scene3D implements SceneHooks {
       c.c.update(dt, sp * 2.2, time);
     }
 
+    if (this.room) {
+      this.professor.update(dt, 0, time);
+      for (const c of this.classmates) if (c.root.visible) c.update(dt, 0, time + c.root.position.x);
+      const pulse = 1 + Math.sin(time * 4) * 0.12;
+      this.seatRing.scale.set(0.9 * pulse, 1, 0.9 * pulse);
+      this.exitRing.scale.set(1.1 * pulse, 1, 1.1 * pulse);
+    }
+
     // door rings: gold = objective, green = usable, grey = closed
-    if (s && this.mode === 'play') {
+    if (s && this.mode === 'play' && !this.room) {
       const interactions = buildingInteractions();
       const goal = objectiveTarget(s);
       for (const id of RING_ZONES) {
@@ -516,7 +762,7 @@ export class Scene3D implements SceneHooks {
   }
 
   private updateRain(dt: number): void {
-    const want = this.weather === 'rain' ? 1 : 0;
+    const want = this.weather === 'rain' && !this.room ? 1 : 0;
     this.rainAmount += (want - this.rainAmount) * Math.min(1, dt * 1.5);
     this.rain.visible = this.rainAmount > 0.05;
     if (!this.rain.visible) return;
@@ -558,9 +804,47 @@ export class Scene3D implements SceneHooks {
     return e;
   }
 
+  private updateRoomLabels(): void {
+    const room = this.room;
+    const show = this.mode === 'play' && !!room;
+    const defs: { id: string; text: string; x: number; y: number; z: number; cls: string }[] = [];
+    if (room) {
+      const { interior, spec } = room;
+      const seat = interior.seats[interior.playerSeat];
+      defs.push(
+        {
+          id: 'room_prof',
+          text: `🎓 ${spec.prof}`,
+          x: interior.prof.x,
+          y: 2.5,
+          z: interior.prof.z,
+          cls: 'npc',
+        },
+        { id: 'room_exit', text: '🚪 Exit', x: interior.door.x, y: 3.1, z: interior.door.z + 0.4, cls: '' },
+      );
+      if (!room.seated)
+        defs.push({ id: 'room_seat', text: '💺 Your seat', x: seat.x, y: 1.9, z: seat.z, cls: 'quest' });
+    }
+    for (const id of ['room_prof', 'room_exit', 'room_seat']) {
+      const e = this.label(id, id === 'room_prof' ? 'npc' : '');
+      const d = defs.find((x) => x.id === id);
+      const p = show && d ? this.view.project(d.x, d.y, d.z) : null;
+      if (!p || !d) {
+        e.style.display = 'none';
+        continue;
+      }
+      e.style.display = '';
+      e.className = 'wlabel ' + d.cls;
+      e.textContent = d.text;
+      e.style.left = p[0] + 'px';
+      e.style.top = p[1] + 'px';
+    }
+  }
+
   private updateLabels(): void {
     const s = game.s;
-    const show = this.mode === 'play';
+    this.updateRoomLabels();
+    const show = this.mode === 'play' && !this.room;
     const goal = s ? objectiveTarget(s) : null;
     const interactions = s ? buildingInteractions() : null;
     for (const d of LABEL_DEFS) {
@@ -599,7 +883,7 @@ export class Scene3D implements SceneHooks {
       const ready = beat && f.rel >= beat.at;
       e.style.display = '';
       e.style.setProperty('--c', N.color);
-      e.textContent = `${ready ? '❗' : f.talked === s.day ? '' : '💬'} ${N.emoji} ${N.name}`;
+      e.textContent = `${ready ? '❗' : f.talked === s.day ? '' : '💬'} ${N.emoji} ${N.name} · ${YEAR_NAMES[N.year - 1]}`;
       e.style.left = p[0] + 'px';
       e.style.top = p[1] + 'px';
     }
@@ -607,7 +891,9 @@ export class Scene3D implements SceneHooks {
 
   private drawMinimap(): void {
     const c = $maybe<HTMLCanvasElement>('#minimap');
-    if (!c || this.mode !== 'play') return;
+    if (!c) return;
+    c.style.visibility = this.room ? 'hidden' : '';
+    if (this.mode !== 'play' || this.room) return;
     const g = c.getContext('2d');
     if (!g) return;
     const W = c.width;

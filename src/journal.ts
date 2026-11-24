@@ -5,27 +5,42 @@ import {
   ACC_LOCK,
   ACC_PRICE,
   ACHIEVEMENTS,
+  BUILDING_LABEL,
   CLUBS,
   COLOR_PRICES,
+  COURSES,
+  CURRICULUM,
   ITEMS,
   NPCS,
   PERKS,
+  ROOM_KIND_NAME,
   SUBJECTS,
   SUBJECT_IDS,
   TERMS,
+  YEAR_NAMES,
   gradeOf,
   xpForLevel,
 } from './core/data';
 import * as St from './core/state';
-import type { Accessory, ClubId, GameState, HairStyle, ItemId, NpcId, StatId } from './core/types';
+import {
+  NPC_IDS,
+  type Accessory,
+  type ClubId,
+  type GameState,
+  type HairStyle,
+  type ItemId,
+  type NpcId,
+  type StatId,
+} from './core/types';
 import { hexCss } from './core/util';
-import { game, refreshHud, save } from './game';
+import { game, refreshHud, relationText, save } from './game';
 import { $, el, esc } from './ui/dom';
 import { ui } from './ui/ui';
 
-type TabId = 'me' | 'subj' | 'friends' | 'items' | 'wardrobe' | 'collect';
+type TabId = 'me' | 'courses' | 'subj' | 'friends' | 'items' | 'wardrobe' | 'collect';
 const TABS: [TabId, string][] = [
   ['me', '🙂 Me'],
+  ['courses', '🎓 Courses'],
   ['subj', '📚 Subjects'],
   ['friends', '💖 Friends'],
   ['items', '🎒 Items'],
@@ -93,7 +108,8 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
           <div class="statrow"><span class="nm">😵 Stress</span>${meter(s.stress, 100, '#ff6b6b')}<b>${Math.round(s.stress)}</b></div>
           <div class="statrow"><span class="nm">😇 Rep</span>${meter(s.rep, 100, '#ffb300')}<b>${Math.round(s.rep)}</b></div>
           <div class="statrow"><span class="nm">🪙 Coins</span><span class="strong grow">${s.coins}</span></div>
-          <div class="statrow"><span class="nm">🏆 Rank</span><span class="strong grow">${rk ? `#${rk.rank} of ${rk.total} (${Math.round(rk.score)}%)` : 'No grades yet'}</span></div></div>
+          <div class="statrow"><span class="nm">🎓 Year</span><span class="strong grow">${YEAR_NAMES[St.yearOf(s) - 1]} · semester ${St.term(s) + 1} of ${TERMS}</span></div>
+          <div class="statrow"><span class="nm">🏆 Rank</span><span class="strong grow">${rk ? `#${rk.rank} of ${rk.total} (${Math.round(rk.score)}% · GPA ${St.gpaOf(rk.score).toFixed(2)})` : 'No grades yet'}</span></div></div>
           <div class="box"><h4>Stats</h4>${STAT_INFO.map(
             ([k, n, i, d, c]) =>
               `<div class="statrow" title="${d}"><span class="nm">${i} ${n}</span>${meter((s.stats[k] % 1) * 100, 100, c)}<b>${St.stat(s, k)}</b></div><div class="statnote">${d}</div>`,
@@ -110,15 +126,45 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
         }</div>`;
       },
 
+      courses(b) {
+        const t = St.term(s);
+        const today = St.timetable(s);
+        const meets = (id: string) =>
+          today.some((x, i) => x === id || (x === 'TEST' && St.testCourse(s) === id && i >= 0))
+            ? ' · 📍 today'
+            : '';
+        const rows = CURRICULUM[t]
+          .map((id) => {
+            const c = COURSES[id];
+            const sc = St.courseScore(s, t, id);
+            const grade = sc === null ? '—' : `${gradeOf(sc / 100).letter} · ${Math.round(sc)}%`;
+            return `<div class="statrow"><span class="nm" style="width:auto;flex:1">${SUBJECTS[c.area].icon} <b>${c.name}</b> <small>${c.code} · ${ROOM_KIND_NAME[c.kind]} ${c.room} (${BUILDING_LABEL[c.building]}) · ${c.prof}${meets(id)}${St.testCourse(s) === id ? ' · 📝 midterm' : ''}</small></span><b class="wide">${grade}</b></div>`;
+          })
+          .join('');
+        const history = Array.from({ length: t }, (_, i) => {
+          const rep = s.termReports.find((r) => r.term === i);
+          return `<span class="badge">Sem ${i + 1} · ${rep ? `${Math.round(rep.score)}% · GPA ${St.gpaOf(rep.score).toFixed(2)} · #${rep.rank ?? '—'}` : '—'}</span>`;
+        }).join('');
+        b.innerHTML = `<div class="box"><h4>Semester ${t + 1} of ${TERMS} · ${YEAR_NAMES[St.yearOf(s) - 1]} year · ${CURRICULUM[t].length} courses</h4>${rows}</div>
+          <div class="box spaced"><h4>Transcript</h4>${history || '<span class="muted">Your first semester is still in progress.</span>'}</div>`;
+      },
+
       subj(b) {
         const subjects = SUBJECT_IDS.map((id) => {
           const S = SUBJECTS[id];
           const m = s.mastery[id];
           const termGrades = Array.from({ length: TERMS }, (_, t) => {
-            const sc = St.subjectScore(s, t, id);
-            return sc === null ? '—' : gradeOf(sc / 100).letter;
-          }).join(' · ');
-          return `<div class="box"><h4>${S.icon} ${S.name}</h4><div class="statrow"><span class="nm">Mastery Lv ${St.masteryLevel(s, id)}</span>${meter(m, 100, S.color)}<b>${Math.floor(m)}</b></div><div class="note1">Term grades: ${termGrades}</div><div class="note2">+${(m / 22).toFixed(1)}s per question · ${Math.round(Math.min(60, m / 5))}% extra hint chance</div></div>`;
+            const scores = CURRICULUM[t]
+              .filter((c) => COURSES[c].area === id)
+              .map((c) => St.courseScore(s, t, c))
+              .filter((v): v is number => v !== null);
+            return scores.length
+              ? gradeOf(scores.reduce((a, v) => a + v, 0) / scores.length / 100).letter
+              : '—';
+          })
+            .slice(0, St.term(s) + 1)
+            .join(' · ');
+          return `<div class="box"><h4>${S.icon} ${S.name}</h4><div class="statrow"><span class="nm">Mastery Lv ${St.masteryLevel(s, id)}</span>${meter(m, 100, S.color)}<b>${Math.floor(m)}</b></div><div class="note1">Semester grades: ${termGrades}</div><div class="note2">+${(m / 22).toFixed(1)}s per question · ${Math.round(Math.min(60, m / 5))}% extra hint chance</div></div>`;
         }).join('');
         const clubs = (Object.entries(CLUBS) as [ClubId, (typeof CLUBS)[ClubId]][])
           .map(
@@ -130,20 +176,29 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
       },
 
       friends(b) {
-        b.innerHTML = `<div class="grid2">${(Object.entries(NPCS) as [NpcId, (typeof NPCS)[NpcId]][])
-          .map(([id, N]) => {
-            const f = s.friends[id];
-            const hearts = Math.floor(f.rel / 20);
-            const next = N.beats[f.story];
-            return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio">${N.bio}</div><div class="hearts5">${'❤️'.repeat(hearts)}${'🤍'.repeat(5 - hearts)} <small>${Math.round(f.rel)}/100</small></div>
+        const card = (id: NpcId): string => {
+          const N = NPCS[id];
+          const f = s.friends[id];
+          const hearts = Math.floor(f.rel / 20);
+          const next = N.beats[f.story];
+          return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio"><b>${N.major}</b> · ${relationText(s, id)}<br>${N.bio}</div><div class="hearts5">${'❤️'.repeat(hearts)}${'🤍'.repeat(5 - hearts)} <small>${Math.round(f.rel)}/100</small></div>
               <div class="story">Story: ${f.story}/3 ${next ? `· next at ${next.at}` : '· complete'}</div>${N.perks
                 .map(
                   (p) =>
                     `<div class="perkline" style="opacity:${f.story >= p.need ? 1 : 0.45}">${f.story >= p.need ? '✅' : '🔒'} ${p.text}</div>`,
                 )
                 .join('')}</div>`;
-          })
-          .join('')}</div>`;
+        };
+        b.innerHTML = [1, 2, 3, 4]
+          .map(
+            (y) =>
+              `<h4 class="spaced">${y === St.yearOf(s) ? '🤝' : y > St.yearOf(s) ? '🎓' : '🌱'} ${YEAR_NAMES[y - 1]} students${y === St.yearOf(s) ? ' (your year)' : y > St.yearOf(s) ? ' (above you)' : ' (below you)'}</h4><div class="grid2">${NPC_IDS.filter(
+                (id) => NPCS[id].year === y,
+              )
+                .map(card)
+                .join('')}</div>`,
+          )
+          .join('');
       },
 
       items(b) {
@@ -189,7 +244,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
         const trophies =
           s.showcase.map((x) => `${CLUBS[x.club].icon} T${x.term + 1}: ${x.place}`).join(' · ') || 'None yet';
         b.innerHTML = `<div class="grid2"><div class="box"><h4>Campus secrets</h4><div class="big">⭐ Gold stars: ${s.stars.length} / 10</div><div class="big tight">🐱 Cats met: ${s.cats.length} / 3</div><div class="hint">Stars unlock a cap (3), headphones (6) and a crown (10).</div></div>
-          <div class="box"><h4>Showcase results</h4><div class="bold">${trophies}</div><h4 class="spaced">Streaks</h4><div class="bold">🔥 Quest streak: ${s.questStreak} days</div><div class="bold tight">✅ Lessons attended: ${s.totals.classes}</div></div></div>
+          <div class="box"><h4>Showcase results</h4><div class="bold">${trophies}</div><h4 class="spaced">Streaks</h4><div class="bold">🔥 Quest streak: ${s.questStreak} days</div><div class="bold tight">✅ Lectures attended: ${s.totals.classes}</div></div></div>
           <div class="box spaced"><h4>Achievements (${Object.keys(s.ach).length}/${ACHIEVEMENTS.length})</h4>${ACHIEVEMENTS.map(
             (a) =>
               `<span class="badge ${s.ach[a.id] ? '' : 'locked'}" title="${a.desc}">${a.icon} <span><b>${a.name}</b><br><small>${a.desc}</small></span></span>`,

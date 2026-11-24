@@ -1,9 +1,10 @@
 // Entry point: boot, title / new-game / menu flows and the interact action.
 import './style.css';
 import { Sound } from './audio/sound';
-import { FINALS, NPCS } from './core/data';
+import { COURSES, FINALS, NPCS, SUBJECTS } from './core/data';
 import * as St from './core/state';
-import { beginDay, game, refreshHud, resume, save, talkTo, petCat } from './game';
+import { beginDay, buildingInteractions, game, refreshHud, resume, save, talkTo, petCat } from './game';
+import * as GameApi from './game';
 import { Input } from './input';
 import { openJournal } from './journal';
 import { Scene3D } from './scene';
@@ -85,7 +86,10 @@ function openMenu(): Promise<void> {
 async function interact(): Promise<void> {
   const t = scene.target;
   if (!t || !canAct()) return;
-  if (t.kind === 'building' && !t.info.enabled) {
+  if (
+    (t.kind === 'building' || t.kind === 'seat' || t.kind === 'exit' || t.kind === 'prof') &&
+    !t.info.enabled
+  ) {
     ui.toast(t.info.why || 'Not available right now.', 'bad');
     Sound.sfx('wrong');
     return;
@@ -98,7 +102,12 @@ async function interact(): Promise<void> {
     } else if (t.kind === 'npc') {
       scene.npcActor(t.id).c.wave(1.2);
       await talkTo(t.id);
-    } else await petCat(t.i);
+    } else if (t.kind === 'cat') await petCat(t.i);
+    else {
+      // Inside a classroom: sit at your seat, talk to the professor or leave by the door.
+      if (t.kind === 'exit') Sound.sfx('door');
+      await t.info.run();
+    }
   } catch (err) {
     console.error(err);
     ui.toast('Something went wrong: ' + (err instanceof Error ? err.message : String(err)), 'bad', 6000);
@@ -205,17 +214,18 @@ function boot(): void {
   }
 
   Object.assign(ui.portraits, {
-    'Principal Hale': { emoji: '🧑‍🏫', color: '#8a6bff' },
-    'Mr. Hale': { emoji: '👨‍🏫', color: '#4aa8ff' },
-    Prefect: { emoji: '🧍', color: '#ff6b6b' },
-    'Office Clerk': { emoji: '🧑‍💼', color: '#7ec8a0' },
-    'Canteen Lady': { emoji: '👩‍🍳', color: '#ff9a3c' },
+    'Dean Hale': { emoji: '🧑‍🏫', color: '#8a6bff' },
+    'Campus Security': { emoji: '🧍', color: '#ff6b6b' },
+    'Registrar Clerk': { emoji: '🧑‍💼', color: '#7ec8a0' },
+    'Café Manager': { emoji: '👩‍🍳', color: '#ff9a3c' },
     'Guest Speaker': { emoji: '🧑‍🚀', color: '#4aa8ff' },
     'Club Captain': { emoji: '📣', color: '#ff7a59' },
     You: { emoji: '🙂', color: '#4aa8ff' },
   });
   for (const N of Object.values(NPCS)) ui.portraits[N.name] = { emoji: N.emoji, color: N.color };
   for (const F of FINALS) ui.portraits[F.name] = { emoji: F.emoji, color: F.color };
+  for (const c of Object.values(COURSES))
+    ui.portraits[c.prof] ??= { emoji: '🧑‍🏫', color: SUBJECTS[c.area].color };
 
   game.scene = scene;
   game.onTitle = (newGamePlus) => {
@@ -243,6 +253,9 @@ function boot(): void {
     (window as unknown as { __game: unknown }).__game = {
       game,
       St,
+      Data: { COURSES },
+      Game: GameApi,
+      interactions: buildingInteractions,
       ui,
       scene,
       busy: () => ({ action: busyAction, ui: ui.isBusy(), mode: scene.mode }),

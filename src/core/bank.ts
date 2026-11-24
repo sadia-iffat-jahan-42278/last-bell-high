@@ -1,7 +1,7 @@
 import type { BankItem } from './types';
 
 /** Non-math question bank, tiers 1..4. `w` = wrong answers. Math is generated in questions.ts. */
-export const BANK: Record<'science' | 'english' | 'history', BankItem[]> = {
+export const BANK: Record<'science' | 'english' | 'history' | 'cs' | 'econ', BankItem[]> = {
   science: [
     {
       t: 1,
@@ -111,7 +111,7 @@ export const BANK: Record<'science' | 'english' | 'history', BankItem[]> = {
   english: [
     {
       t: 1,
-      q: 'Choose the correct word: She ___ to school every day.',
+      q: 'Choose the correct word: She ___ to campus every day.',
       a: 'goes',
       w: ['go', 'going', 'gone'],
     },
@@ -138,7 +138,7 @@ export const BANK: Record<'science' | 'english' | 'history', BankItem[]> = {
     },
     {
       t: 2,
-      q: 'Complete: ___ going to the park after school.',
+      q: 'Complete: ___ going to the park after class.',
       a: 'They’re',
       w: ['Their', 'There', 'Thier'],
     },
@@ -323,5 +323,181 @@ export const BANK: Record<'science' | 'english' | 'history', BankItem[]> = {
       w: ['Japan and Peru', 'Egypt and Brazil', 'India and Antarctica'],
     },
     { t: 4, q: 'In which year did the Soviet Union dissolve?', a: '1991', w: ['1985', '1989', '1999'] },
+  ],
+  cs: [
+    {
+      t: 1,
+      q: 'What does CPU stand for?',
+      a: 'Central Processing Unit',
+      w: ['Central Program Utility', 'Computer Personal Unit', 'Core Power Unit'],
+    },
+    { t: 1, q: 'How many bits are in a byte?', a: '8', w: ['4', '10', '16'] },
+    {
+      t: 1,
+      q: 'Which of these is a programming language?',
+      a: 'Python',
+      w: ['Ethernet', 'Photoshop', 'Bluetooth'],
+    },
+    {
+      t: 1,
+      q: 'Which device stores data even when the power is off?',
+      a: 'Solid-state drive',
+      w: ['RAM', 'CPU cache', 'Graphics card'],
+    },
+    { t: 2, q: 'What is the binary number 101 in decimal?', a: '5', w: ['3', '4', '6'] },
+    { t: 2, q: 'Which data structure works first-in, first-out?', a: 'Queue', w: ['Stack', 'Tree', 'Heap'] },
+    {
+      t: 2,
+      q: 'What does HTTP stand for?',
+      a: 'Hypertext Transfer Protocol',
+      w: ['High Transfer Text Process', 'Hyperlink Text Tool Package', 'Host Terminal Transfer Protocol'],
+    },
+    {
+      t: 2,
+      q: 'In programming, what is a loop used for?',
+      a: 'Repeating instructions',
+      w: ['Storing a file', 'Naming a variable', 'Drawing a picture'],
+    },
+    {
+      t: 3,
+      q: 'Binary search on a sorted list of n items takes about…',
+      a: 'log n steps',
+      w: ['n steps', 'n² steps', 'one step'],
+    },
+    {
+      t: 3,
+      q: 'Which SQL clause filters rows?',
+      a: 'WHERE',
+      w: ['ORDER BY', 'FROM', 'LIMIT'],
+    },
+    {
+      t: 3,
+      q: 'What is a primary key in a database?',
+      a: 'A unique identifier for each row',
+      w: ['The first column in a table', 'A password for the database', 'A backup of the table'],
+    },
+    { t: 3, q: 'Which of these is a stack operation?', a: 'push', w: ['enqueue', 'dequeue', 'traverse'] },
+    {
+      t: 4,
+      q: 'What is the worst-case time complexity of quicksort?',
+      a: 'n²',
+      w: ['n log n', 'n', 'log n'],
+    },
+    {
+      t: 4,
+      q: 'Which OSI layer does TCP belong to?',
+      a: 'Transport',
+      w: ['Network', 'Application', 'Data link'],
+    },
+    {
+      t: 4,
+      q: 'What problem does a mutex prevent?',
+      a: 'Race conditions on shared data',
+      w: ['Memory leaks', 'Syntax errors', 'Packet loss'],
+    },
+    {
+      t: 4,
+      q: 'Which algorithm finds shortest paths from one node when edge weights are non-negative?',
+      a: 'Dijkstra’s algorithm',
+      w: ['Kruskal’s algorithm', 'Bubble sort', 'Depth-first search'],
+    },
+  ],
+  econ: [
+    {
+      t: 1,
+      q: 'What does GDP measure?',
+      a: 'The value of goods and services a country produces',
+      w: ['The number of citizens', 'The size of the national debt', 'The price of one basket of goods'],
+    },
+    {
+      t: 1,
+      q: 'If demand rises and supply stays the same, prices tend to…',
+      a: 'Rise',
+      w: ['Fall', 'Stay frozen', 'Vanish'],
+    },
+    {
+      t: 1,
+      q: 'What is inflation?',
+      a: 'A general rise in prices',
+      w: ['A fall in wages', 'A tax on imports', 'A bank fee'],
+    },
+    {
+      t: 1,
+      q: 'What is “opportunity cost”?',
+      a: 'The value of the next best option you give up',
+      w: ['The price tag on an item', 'The cost of borrowing', 'The profit from a sale'],
+    },
+    {
+      t: 2,
+      q: 'A market with exactly one seller is a…',
+      a: 'Monopoly',
+      w: ['Oligopoly', 'Perfect competition', 'Monopsony'],
+    },
+    {
+      t: 2,
+      q: 'On a balance sheet, assets equal liabilities plus…',
+      a: 'Equity',
+      w: ['Revenue', 'Depreciation', 'Dividends'],
+    },
+    {
+      t: 2,
+      q: 'When price rises and quantity demanded falls, the demand curve…',
+      a: 'Slopes downward',
+      w: ['Slopes upward', 'Is vertical', 'Is a circle'],
+    },
+    {
+      t: 2,
+      q: 'Which central bank action usually makes borrowing more expensive?',
+      a: 'Raising interest rates',
+      w: ['Printing more money', 'Cutting taxes', 'Lowering reserve rates'],
+    },
+    {
+      t: 3,
+      q: 'If price elasticity of demand is above 1, demand is…',
+      a: 'Elastic',
+      w: ['Inelastic', 'Perfectly inelastic', 'Constant'],
+    },
+    {
+      t: 3,
+      q: 'What does a Nash equilibrium describe?',
+      a: 'No player gains by changing strategy alone',
+      w: ['Everyone earns the same payoff', 'The best outcome for the group', 'A market with no sellers'],
+    },
+    {
+      t: 3,
+      q: 'A negative externality is…',
+      a: 'A cost imposed on a third party',
+      w: ['A loss on a stock', 'A tax refund', 'A fall in demand'],
+    },
+    {
+      t: 3,
+      q: 'Which measure describes how unequal an income distribution is?',
+      a: 'Gini coefficient',
+      w: ['Consumer Price Index', 'GDP deflator', 'Phillips curve'],
+    },
+    {
+      t: 4,
+      q: 'In the IS-LM model, higher government spending shifts…',
+      a: 'The IS curve to the right',
+      w: ['The IS curve to the left', 'The LM curve to the left', 'Neither curve'],
+    },
+    {
+      t: 4,
+      q: 'The Efficient Market Hypothesis says asset prices…',
+      a: 'Reflect all available information',
+      w: ['Always rise over time', 'Are set by regulators', 'Are random but predictable by charts'],
+    },
+    {
+      t: 4,
+      q: 'What does heteroskedasticity violate in ordinary least squares?',
+      a: 'Constant variance of the errors',
+      w: ['Linearity of the model', 'Independence of the observations', 'Normality of the regressors'],
+    },
+    {
+      t: 4,
+      q: 'The Coase theorem says externalities can be solved by…',
+      a: 'Private bargaining with clear property rights',
+      w: ['Higher taxes only', 'Banning the activity', 'Printing money'],
+    },
   ],
 };

@@ -1,7 +1,35 @@
 // Shared domain types. The whole save file shape lives in `GameState`.
 
-export type SubjectId = 'math' | 'science' | 'english' | 'history';
-export type NpcId = 'maya' | 'kai' | 'zoe' | 'rin';
+/** Subject areas: they drive question banks and mastery. Courses belong to one area. */
+export type SubjectId = 'math' | 'science' | 'english' | 'history' | 'cs' | 'econ';
+/** Every friend on campus, four per academic year (Maya/Theo/Lina/Sam are freshmen ... Rin/Nora/Jack/Tessa seniors). */
+export const NPC_IDS = [
+  'maya',
+  'kai',
+  'zoe',
+  'rin',
+  'theo',
+  'lina',
+  'sam',
+  'diego',
+  'iris',
+  'yuki',
+  'marcus',
+  'ava',
+  'felix',
+  'nora',
+  'jack',
+  'tessa',
+] as const;
+export type NpcId = (typeof NPC_IDS)[number];
+/** A course is identified by a short string such as `calc1`. */
+export type CourseId = string;
+/** The kind of classroom a course meets in. */
+export type RoomKind = 'lecture' | 'seminar' | 'lab' | 'computer';
+/** Which campus building holds the classroom. */
+export type ClassBuilding = 'main' | 'lab';
+/** How a student stands relative to you: older (senior), same year (peer) or younger (junior). */
+export type Relation = 'senior' | 'peer' | 'junior';
 export type ClubId = 'sports' | 'music' | 'science';
 export type StatId = 'int' | 'foc' | 'sta' | 'cha' | 'cre';
 export type ItemId = 'drink' | 'snack' | 'notes' | 'tea' | 'pen' | 'skip' | 'cheat';
@@ -57,6 +85,9 @@ export type EventId = 'popquiz' | 'wallet' | 'note' | 'guest' | 'fire' | 'blacko
 export type Weather = 'sunny' | 'cloudy' | 'rain';
 export type RecordKind = 'class' | 'test' | 'final';
 export type PeriodKind = 'class' | 'test' | 'final' | 'lunch' | 'after' | 'showcase' | 'free' | 'evening';
+/** Friend perks that stack numerically (see `friendBonus`). */
+export type BonusKey =
+  'timePlus' | 'xpPct' | 'coinPct' | 'shopPct' | 'restPlus' | 'stressRelief' | 'masteryPct' | 'hintPlus';
 export type LetterGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
 export type Accessory = 'none' | 'glasses' | 'cap' | 'headphones' | 'beanie' | 'bow' | 'crown';
 export type HairStyle = 'short' | 'long' | 'pony' | 'spiky' | 'bun' | 'bob';
@@ -102,7 +133,8 @@ export interface Daily {
   notes: string[];
 }
 
-export type ScoreList = Partial<Record<SubjectId, number[]>>;
+/** Scores (0..1) per course id. */
+export type ScoreList = Partial<Record<CourseId, number[]>>;
 export interface TermRecord {
   class: ScoreList;
   test: ScoreList;
@@ -142,7 +174,7 @@ export interface Unlocks {
 }
 
 export interface GameState {
-  v: 1;
+  v: 2;
   name: string;
   look: Look;
   day: number;
@@ -186,6 +218,8 @@ export interface GameState {
   canteenSpecial: boolean;
   clubBoost: boolean;
   revealedStar: number;
+  /** Day on which the player last chatted with each professor (by course id). */
+  profDay: Record<CourseId, number>;
   created: number;
 }
 
@@ -231,11 +265,15 @@ export interface TalkLine {
 }
 export interface Npc {
   name: string;
+  /** Academic year 1 (freshman) .. 4 (senior). */
+  year: 1 | 2 | 3 | 4;
+  major: string;
   role: string;
   emoji: string;
   color: string;
   bio: string;
-  perks: { need: number; text: string }[];
+  /** `bonus` perks are applied by `friendBonus`; the older hand-coded perks have no bonus. */
+  perks: { need: number; text: string; bonus?: Partial<Record<BonusKey, number>> }[];
   talk: TalkLine[];
   beats: Beat[];
 }

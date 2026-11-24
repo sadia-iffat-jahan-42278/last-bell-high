@@ -1,21 +1,31 @@
 // Pure game state + rules (no DOM / WebGL). Everything here is unit-testable in Node.
 import {
   ACHIEVEMENTS,
+  AFTER_PERIOD,
+  COURSES,
+  CURRICULUM,
   DAYS_PER_TERM,
+  EVENING_PERIOD,
   EVENT_POOL,
+  LUNCH_PERIOD,
   NPCS,
   PERKS,
   QUESTS,
   SUBJECT_IDS,
   TERMS,
-  TEST_SUBJECT,
-  TIMETABLE,
+  finalPhases,
   gradeOf,
+  midtermCourse,
+  semesterTimetable,
   xpForLevel,
+  yearOfTerm,
+  type TimetableEntry,
 } from './data';
 import type {
   AchievementId,
   ActiveEvent,
+  BonusKey,
+  CourseId,
   Daily,
   GameState,
   Look,
@@ -25,13 +35,14 @@ import type {
   PerkId,
   QuestId,
   RecordKind,
+  Relation,
   StatId,
   SubjectId,
   Weather,
 } from './types';
 import { clamp, hashStr, mulberry32, type Rng } from './util';
 
-export const SAVE_KEY = 'lastbell.save.v1';
+export const SAVE_KEY = 'lastbell.save.v2';
 export const META_KEY = 'lastbell.meta.v1';
 export const TOTAL_DAYS = TERMS * DAYS_PER_TERM;
 
@@ -71,7 +82,7 @@ export const freshDaily = (): Daily => ({
 export function newState(name: string, look: Look, meta: Meta = defaultMeta()): GameState {
   const npcIds = Object.keys(NPCS) as NpcId[];
   const s: GameState = {
-    v: 1,
+    v: 2,
     name: name || 'Student',
     look: { ...look },
     day: 0,
@@ -84,7 +95,7 @@ export function newState(name: string, look: Look, meta: Meta = defaultMeta()): 
     perks: [],
     pendingPerks: 0,
     stats: { int: 1, foc: 1, sta: 1, cha: 1, cre: 1 },
-    mastery: { math: 0, science: 0, english: 0, history: 0 },
+    mastery: Object.fromEntries(SUBJECT_IDS.map((k) => [k, 0])) as GameState['mastery'],
     touched: {},
     records: Array.from({ length: TERMS }, () => ({ class: {}, test: {}, final: {} })),
     clubs: { sports: { xp: 0, best: 0 }, music: { xp: 0, best: 0 }, science: { xp: 0, best: 0 } },
@@ -128,6 +139,7 @@ export function newState(name: string, look: Look, meta: Meta = defaultMeta()): 
     canteenSpecial: false,
     clubBoost: false,
     revealedStar: -1,
+    profDay: {},
     created: Date.now(),
   };
   if (meta.ngPlus > 0) {
@@ -139,39 +151,76 @@ export function newState(name: string, look: Look, meta: Meta = defaultMeta()): 
 }
 
 /* ---------- calendar helpers ---------- */
-export type TimetableEntry = SubjectId | 'TEST' | 'FINAL';
+export type { TimetableEntry };
 
+/** Semester index 0..7. */
 export const term = (s: GameState): number => Math.min(TERMS - 1, Math.floor(s.day / DAYS_PER_TERM));
 export const dayInTerm = (s: GameState): number => s.day % DAYS_PER_TERM;
+/** Academic year 1 (freshman) .. 4 (senior). */
+export const yearOf = (s: GameState): number => yearOfTerm(term(s));
 export const isFinals = (s: GameState): boolean => dayInTerm(s) === DAYS_PER_TERM - 1;
 export const isTestDay = (s: GameState): boolean => dayInTerm(s) === 2;
 export const isShowcase = (s: GameState): boolean => dayInTerm(s) === 4;
-export const timetable = (s: GameState): TimetableEntry[] =>
-  isFinals(s) ? ['FINAL', 'FINAL'] : [...TIMETABLE[dayInTerm(s)]];
-export const testSubject = (s: GameState): SubjectId => TEST_SUBJECT[term(s)];
+/** The courses the player is enrolled in this semester. */
+export const courses = (s: GameState): CourseId[] => CURRICULUM[term(s)];
+/** Today's lecture slots indexed by period (null where there is no lecture). */
+export const timetable = (s: GameState): TimetableEntry[] => semesterTimetable(term(s))[dayInTerm(s)];
+export const testCourse = (s: GameState): CourseId => midtermCourse(term(s));
+export const testSubject = (s: GameState): SubjectId => COURSES[testCourse(s)].area;
+/** Subject areas the finals boss tests this semester. */
+export const finalsPhases = (s: GameState): SubjectId[] => finalPhases(term(s));
 
 export function periodKind(s: GameState): PeriodKind {
-  if (s.period === 2) return 'lunch';
-  if (s.period === 3) return isShowcase(s) ? 'showcase' : 'after';
-  if (s.period === 4) return 'evening';
-  if (isFinals(s)) return 'final';
-  if (s.cancelled[s.period]) return 'free';
-  if (isTestDay(s) && s.period === 1) return 'test';
+  const p = s.period;
+  if (p === LUNCH_PERIOD) return 'lunch';
+  if (p === AFTER_PERIOD) return isShowcase(s) ? 'showcase' : 'after';
+  if (p === EVENING_PERIOD) return 'evening';
+  // Lecture periods 0, 1 and 3.
+  if (isFinals(s)) return p <= 1 ? 'final' : 'free';
+  if (s.cancelled[p]) return 'free';
+  if (isTestDay(s) && p === 1) return 'test';
   return 'class';
 }
 
-/** The subject being taught this period, or `undefined` outside lessons (lunch, finals, ...). */
-export function classSubject(s: GameState): SubjectId | undefined {
+/** The course taught this period (the midterm course on test slots), or `undefined` outside lectures and finals. */
+export function classCourse(s: GameState): CourseId | undefined {
   const t = timetable(s)[s.period];
-  if (t === 'TEST') return testSubject(s);
-  if (t === 'FINAL') return undefined;
+  if (t === 'TEST') return testCourse(s);
+  if (!t || t === 'FINAL') return undefined;
   return t;
+}
+/** The subject area of this period's course, or `undefined` outside lectures. */
+export function classSubject(s: GameState): SubjectId | undefined {
+  const c = classCourse(s);
+  return c ? COURSES[c].area : undefined;
 }
 export const isFreeKind = (k: PeriodKind): boolean =>
   k === 'lunch' || k === 'after' || k === 'showcase' || k === 'free';
 
 /* ---------- perks / effects ---------- */
 export const has = (s: GameState, p: PerkId): boolean => s.perks.includes(p);
+
+/** Sum of a numeric friend perk across every friend whose story has unlocked it. */
+export function friendBonus(s: GameState, key: BonusKey): number {
+  let total = 0;
+  for (const [id, N] of Object.entries(NPCS) as [NpcId, (typeof NPCS)[NpcId]][]) {
+    const story = s.friends[id]?.story ?? 0;
+    for (const p of N.perks) if (p.bonus && story >= p.need) total += p.bonus[key] ?? 0;
+  }
+  return total;
+}
+
+/** Whether `npc` is older (senior), the same year (peer) or younger (junior) than the player right now. */
+export function relationTo(s: GameState, npc: NpcId): Relation {
+  const y = NPCS[npc].year;
+  const mine = yearOf(s);
+  return y > mine ? 'senior' : y < mine ? 'junior' : 'peer';
+}
+
+/** Is `npc` hanging out on campus this period? Deterministic per day and period, about 65% of the time. */
+export function npcPresent(s: GameState, npc: NpcId, period = s.period): boolean {
+  return hashStr(`${npc}|${s.day}|${period}`) % 100 < 65;
+}
 export const friendHas = (s: GameState, npc: NpcId, need: number): boolean => s.friends[npc].story >= need;
 export const stat = (s: GameState, k: StatId): number => Math.floor(s.stats[k] + 1e-6);
 export const masteryLevel = (s: GameState, subj: SubjectId): number => Math.floor(s.mastery[subj] / 20);
@@ -184,7 +233,7 @@ export function energyCost(s: GameState, base: number): number {
 }
 
 export function timeBonus(s: GameState, subject: SubjectId): number {
-  let t = stat(s, 'foc') * 0.35 + s.mastery[subject] / 22;
+  let t = stat(s, 'foc') * 0.35 + s.mastery[subject] / 22 + friendBonus(s, 'timePlus');
   if (has(s, 'speed')) t += 3;
   if (s.rested) t += 2;
   return t;
@@ -192,10 +241,25 @@ export function timeBonus(s: GameState, subject: SubjectId): number {
 
 export const fatigueMult = (s: GameState): number => (s.energy < 25 ? 0.78 : 1) * (s.stress > 75 ? 0.88 : 1);
 export const hintChance = (s: GameState, subject: SubjectId): number =>
-  clamp(stat(s, 'int') * 0.015 + s.mastery[subject] / 500 + (has(s, 'hint') ? 0.25 : 0), 0, 0.6);
+  clamp(
+    stat(s, 'int') * 0.015 +
+      s.mastery[subject] / 500 +
+      (has(s, 'hint') ? 0.25 : 0) +
+      friendBonus(s, 'hintPlus'),
+    0,
+    0.75,
+  );
 export const comboCap = (s: GameState): number => (has(s, 'combo') ? 2.6 : 2.0);
 export const shopPrice = (s: GameState, base: number): number =>
-  Math.max(1, Math.round(base * (has(s, 'coupon') ? 0.8 : 1) * (1 - Math.min(0.2, stat(s, 'cha') * 0.01))));
+  Math.max(
+    1,
+    Math.round(
+      base *
+        (has(s, 'coupon') ? 0.8 : 1) *
+        (1 - Math.min(0.2, stat(s, 'cha') * 0.01)) *
+        (1 - Math.min(0.25, friendBonus(s, 'shopPct'))),
+    ),
+  );
 
 export function addEnergy(s: GameState, v: number): number {
   const o = s.energy;
@@ -209,13 +273,15 @@ export function addStress(s: GameState, v: number): number {
   return s.stress - o;
 }
 export function addCoins(s: GameState, n: number): number {
-  n = Math.round(n);
+  n = Math.round(n > 0 ? n * (1 + friendBonus(s, 'coinPct')) : n);
   s.coins = Math.max(0, s.coins + n);
   s.daily.coins += n;
   return n;
 }
 export function addXP(s: GameState, n: number): { n: number; up: number } {
-  n = Math.round(n * (has(s, 'teacher') ? 1.12 : 1) * (s.energy < 25 ? 0.9 : 1));
+  n = Math.round(
+    n * (has(s, 'teacher') ? 1.12 : 1) * (1 + friendBonus(s, 'xpPct')) * (s.energy < 25 ? 0.9 : 1),
+  );
   s.xp += n;
   s.daily.xp += n;
   let up = 0;
@@ -235,7 +301,7 @@ export function gainStat(s: GameState, k: StatId, v: number): boolean {
   return Math.floor(s.stats[k] + 1e-6) > before;
 }
 export function addMastery(s: GameState, subj: SubjectId, v: number): number {
-  v *= has(s, 'scholar') ? 1.3 : 1;
+  v *= (has(s, 'scholar') ? 1.3 : 1) * (1 + friendBonus(s, 'masteryPct'));
   s.mastery[subj] = clamp(s.mastery[subj] + v, 0, 100);
   s.touched[subj] = true;
   return v;
@@ -251,19 +317,19 @@ export const clubLevel = (xp: number): number => Math.min(10, 1 + Math.floor(xp 
 export const clubProgress = (xp: number): number => (clubLevel(xp) >= 10 ? 1 : (xp % 60) / 60);
 
 /* ---------- grades & rank ---------- */
-export function recordScore(s: GameState, kind: RecordKind, subject: SubjectId, pct: number): void {
+export function recordScore(s: GameState, kind: RecordKind, course: CourseId, pct: number): void {
   const r = s.records[term(s)][kind];
-  (r[subject] ??= []).push(pct);
+  (r[course] ??= []).push(pct);
 }
 const avg = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length;
 
-/** Weighted subject score for term `t` as a percentage, or null if nothing is recorded yet. */
-export function subjectScore(s: GameState, t: number, subj: SubjectId): number | null {
+/** Weighted course score for semester `t` as a percentage, or null if nothing is recorded yet. */
+export function courseScore(s: GameState, t: number, course: CourseId): number | null {
   const r = s.records[t];
   const parts: [number, number][] = [];
-  const cls = r.class[subj];
-  const tst = r.test[subj];
-  const fin = r.final[subj];
+  const cls = r.class[course];
+  const tst = r.test[course];
+  const fin = r.final[course];
   if (cls?.length) parts.push([avg(cls), 0.3]);
   if (tst?.length) parts.push([avg(tst), 0.3]);
   if (fin?.length) parts.push([avg(fin), 0.4]);
@@ -271,8 +337,9 @@ export function subjectScore(s: GameState, t: number, subj: SubjectId): number |
   const w = parts.reduce((a, [, k]) => a + k, 0);
   return (parts.reduce((a, [v, k]) => a + v * k, 0) / w) * 100;
 }
+/** Average of the player's course scores in semester `t` (a GPA-style percentage). */
 export function playerScore(s: GameState, t: number): number | null {
-  const vals = SUBJECT_IDS.map((x) => subjectScore(s, t, x)).filter((v): v is number => v !== null);
+  const vals = CURRICULUM[t].map((x) => courseScore(s, t, x)).filter((v): v is number => v !== null);
   return vals.length ? avg(vals) : null;
 }
 
@@ -297,6 +364,10 @@ const NAMES = [
   'Ravi',
   'Sofia',
   'Tariq',
+  'Uma',
+  'Victor',
+  'Wen',
+  'Zara',
 ];
 export interface Classmate {
   name: string;
@@ -307,13 +378,10 @@ export function classmates(): Classmate[] {
   if (classmateCache) return classmateCache;
   const r = mulberry32(99);
   classmateCache = NAMES.map((name) => ({ name, ability: 50 + r() * 30 }));
-  classmateCache.push(
-    { name: 'Rin', ability: 87 },
-    { name: 'Maya', ability: 79 },
-    { name: 'Kai', ability: 62 },
-    { name: 'Zoe', ability: 69 },
-  );
-  return classmateCache;
+  // The last four are the cohort's high flyers.
+  const list = classmateCache;
+  [87, 79, 62, 69].forEach((a, i) => (list[list.length - 4 + i].ability = a));
+  return list;
 }
 export function npcTerm(n: Classmate, t: number): number {
   const r = mulberry32(hashStr(n.name) + t * 97);
@@ -333,13 +401,15 @@ export function rankOf(s: GameState, t: number): RankResult | null {
   return { rank: 1 + list.filter((x) => x.score > ps).length, total: list.length + 1, score: ps, list };
 }
 export function overallRank(s: GameState): RankResult | null {
-  const ts = [0, 1, 2].filter((t) => playerScore(s, t) !== null);
+  const ts = Array.from({ length: TERMS }, (_, t) => t).filter((t) => playerScore(s, t) !== null);
   if (!ts.length) return null;
   const ps = avg(ts.map((t) => playerScore(s, t) as number));
   const list = classmates().map((n) => ({ name: n.name, score: avg(ts.map((t) => npcTerm(n, t))) }));
   return { rank: 1 + list.filter((x) => x.score > ps).length, total: list.length + 1, score: ps, list };
 }
 export const letterOf = (score: number) => gradeOf(score / 100).letter;
+/** Map a percentage score to a 4.0 GPA scale (60% is a 2.0, 95% and above is a 4.0). */
+export const gpaOf = (score: number): number => clamp(2 + (score - 60) * (2 / 35), 0, 4);
 
 /* ---------- quests / achievements / events ---------- */
 export function rollQuests(s: GameState): void {
@@ -380,7 +450,7 @@ export function checkAchievements(s: GameState): (typeof ACHIEVEMENTS)[number][]
     allStars: s.stars.length >= 10,
     cats: s.cats.length >= 3,
     bff: Object.values(s.friends).some((x) => x.rel >= 99.5),
-    social: Object.values(s.friends).every((x) => x.rel >= 50),
+    social: Object.values(s.friends).filter((x) => x.rel >= 50).length >= 8,
     rich: s.coins >= 400,
     lvl5: s.level >= 5,
     lvl10: s.level >= 10,
@@ -436,10 +506,10 @@ const NESTED_KEYS = ['stats', 'mastery', 'clubs', 'friends', 'totals', 'unlocks'
 
 /**
  * Validate a parsed save and fill in any fields added since it was written.
- * Returns null when the data is not a usable v1 save.
+ * Returns null when the data is not a usable v2 save (old v1 high-school saves cannot be converted).
  */
 export function migrateSave(raw: unknown): GameState | null {
-  if (!isRecord(raw) || raw.v !== 1) return null;
+  if (!isRecord(raw) || raw.v !== 2) return null;
   if (typeof raw.day !== 'number' || !isRecord(raw.look) || !isRecord(raw.friends)) return null;
   const base = newState(
     typeof raw.name === 'string' ? raw.name : 'Student',

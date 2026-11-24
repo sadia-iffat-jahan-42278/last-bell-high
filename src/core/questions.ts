@@ -97,7 +97,18 @@ function mathTier3(rng: Rng): RawMath {
 }
 
 function mathTier4(rng: Rng): RawMath {
-  const kind = choose(rng, ['quad', 'sys', 'seq', 'pyth', 'sum', 'log'] as const);
+  const kind = choose(rng, [
+    'quad',
+    'sys',
+    'seq',
+    'pyth',
+    'sum',
+    'log',
+    'deriv',
+    'det',
+    'comb',
+    'integ',
+  ] as const);
   if (kind === 'quad') {
     const r1 = randInt(rng, 1, 7);
     const r2 = randInt(rng, r1 + 1, 9);
@@ -135,6 +146,28 @@ function mathTier4(rng: Rng): RawMath {
   if (kind === 'sum') {
     const n = choose(rng, [10, 12, 15, 20, 25]);
     return { q: `What is the sum of the integers from 1 to ${n}?`, ans: (n * (n + 1)) / 2 };
+  }
+  if (kind === 'deriv') {
+    const a = randInt(rng, 2, 6);
+    const b = randInt(rng, 1, 9);
+    const c = randInt(rng, 1, 5);
+    return { q: `If f(x) = ${a}x² + ${b}x, what is f′(${c}) ?`, ans: 2 * a * c + b };
+  }
+  if (kind === 'det') {
+    const a = randInt(rng, 3, 9);
+    const d = randInt(rng, 3, 9);
+    const b = randInt(rng, 1, 4);
+    const c = randInt(rng, 1, 4);
+    return { q: `What is the determinant of [[${a}, ${b}], [${c}, ${d}]] ?`, ans: a * d - b * c };
+  }
+  if (kind === 'comb') {
+    const n = randInt(rng, 5, 12);
+    return { q: `In how many ways can you choose 2 items from ${n}? (C(${n}, 2))`, ans: (n * (n - 1)) / 2 };
+  }
+  if (kind === 'integ') {
+    const k = randInt(rng, 2, 6);
+    const c = randInt(rng, 2, 5);
+    return { q: `What is the integral of ${2 * k}x from 0 to ${c} ?`, ans: k * c * c };
   }
   const e = randInt(rng, 2, 5);
   return { q: `What is log₁₀(${10 ** e}) ?`, ans: e };

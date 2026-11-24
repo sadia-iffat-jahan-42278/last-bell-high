@@ -1,7 +1,8 @@
 // Low-poly students built from shared primitive meshes.
 import { Group, type Mesh, type MeshLambertMaterial } from 'three';
-import type { Accessory, HairStyle, Look } from '../core/types';
-import { pick, type Rng } from '../core/util';
+import { NPCS } from '../core/data';
+import { NPC_IDS, type Accessory, type HairStyle, type Look, type NpcId } from '../core/types';
+import { hashStr, mulberry32, pick, type Rng } from '../core/util';
 import { SH, clearGroup, part, setColor } from './parts';
 
 export const SKINS = [0xf8d9bd, 0xedbd96, 0xd49a6a, 0xa8714a, 0x6f4a31];
@@ -26,6 +27,8 @@ export class Character {
   private phase = Math.random() * 6;
   private waveT = 0;
   private speed = 0;
+  /** Sitting at a desk: legs forward, hips lowered, no walking animation. */
+  seated = false;
 
   private body = new Group();
   private head = new Group();
@@ -216,6 +219,38 @@ export class Character {
     this.waveT = sec;
   }
 
+  /** Sit down (or stand up again). Seated characters rest their hands on the desk. */
+  setSeated(on: boolean): void {
+    this.seated = on;
+    if (!on) {
+      this.legL.position.y = 0.86;
+      this.legR.position.y = 0.86;
+      this.body.position.y = 0.85;
+      this.body.rotation.x = 0;
+      this.head.rotation.x = 0;
+    }
+  }
+
+  private updateSeated(dt: number, t: number): void {
+    const drop = 0.27;
+    this.legL.position.y = 0.86 - drop;
+    this.legR.position.y = 0.86 - drop;
+    this.legL.rotation.x = -1.5;
+    this.legR.rotation.x = -1.5;
+    this.body.position.y = 0.85 - drop + Math.sin(t * 1.8 + this.phase) * 0.006;
+    this.body.rotation.x = 0.06;
+    this.armL.rotation.x = -0.95;
+    this.armR.rotation.x = -0.95;
+    this.armL.rotation.z = 0.12;
+    this.armR.rotation.z = -0.12;
+    this.head.rotation.x = Math.sin(t * 1.1 + this.phase) * 0.04;
+    if (this.waveT > 0) {
+      this.waveT -= dt;
+      this.armR.rotation.x = -2.7;
+      this.armR.rotation.z = -0.3 + Math.sin(t * 12) * 0.35;
+    }
+  }
+
   /** Turn smoothly to face the direction (dx, dz). */
   faceDir(dx: number, dz: number, dt: number, rate = 10): void {
     const target = Math.atan2(dx, dz);
@@ -228,6 +263,10 @@ export class Character {
 
   /** Animate walking / idling. `speed` in world units per second, `t` is the global clock. */
   update(dt: number, speed: number, t: number): void {
+    if (this.seated) {
+      this.updateSeated(dt, t);
+      return;
+    }
     this.speed += (speed - this.speed) * Math.min(1, dt * 10);
     const sp = this.speed;
     this.phase += dt * sp * 1.7;
@@ -252,8 +291,11 @@ export class Character {
   }
 }
 
-/** The four friends' fixed outfits. */
-export const NPC_LOOKS: Record<'maya' | 'kai' | 'zoe' | 'rin', Look> = {
+/** Tie colour by academic year: green freshmen, blue sophomores, orange juniors, red seniors. */
+export const YEAR_TIE = [0x4ac26b, 0x4a8ee0, 0xe0a02a, 0xc23b3b];
+
+/** The sixteen friends' fixed outfits (before the year-coloured tie is applied). */
+const BASE_LOOKS: Record<NpcId, Look> = {
   maya: {
     skin: SKINS[1],
     hairStyle: 'long',
@@ -291,7 +333,66 @@ export const NPC_LOOKS: Record<'maya' | 'kai' | 'zoe' | 'rin', Look> = {
     pants: 0x1f2433,
     tie: 0xffc933,
   },
+  theo: {
+    skin: SKINS[1],
+    hairStyle: 'short',
+    hair: 0x2a2020,
+    blazer: 0x444b57,
+    bag: 0x2a2a30,
+    acc: 'glasses',
+  },
+  lina: { skin: SKINS[2], hairStyle: 'bob', hair: 0xb4472a, blazer: 0xd9a520, bag: 0xf0b429, acc: 'bow' },
+  sam: { skin: SKINS[4], hairStyle: 'short', hair: 0x2a2020, blazer: 0x2f7a4b, bag: 0xd94a3a, acc: 'beanie' },
+  diego: { skin: SKINS[2], hairStyle: 'spiky', hair: 0x5a3a22, blazer: 0xd9a520, bag: 0x3d7be0, acc: 'cap' },
+  iris: { skin: SKINS[0], hairStyle: 'bun', hair: 0x4a78d6, blazer: 0x2f4a8a, bag: 0xc9ccd6, acc: 'glasses' },
+  yuki: {
+    skin: SKINS[1],
+    hairStyle: 'pony',
+    hair: 0x20243a,
+    blazer: 0x444b57,
+    bag: 0x35d9a0,
+    acc: 'headphones',
+  },
+  marcus: {
+    skin: SKINS[3],
+    hairStyle: 'short',
+    hair: 0x2a2020,
+    blazer: 0x8a2f3f,
+    bag: 0x2a2a30,
+    acc: 'none',
+  },
+  ava: { skin: SKINS[0], hairStyle: 'long', hair: 0xd9b45a, blazer: 0x1f2433, bag: 0xd94a3a, acc: 'none' },
+  felix: {
+    skin: SKINS[2],
+    hairStyle: 'spiky',
+    hair: 0xc9ccd6,
+    blazer: 0x2f7a4b,
+    bag: 0x2a2a30,
+    acc: 'glasses',
+  },
+  nora: { skin: SKINS[1], hairStyle: 'bun', hair: 0x5a3a22, blazer: 0x2f4a8a, bag: 0xf0b429, acc: 'glasses' },
+  jack: { skin: SKINS[0], hairStyle: 'short', hair: 0xb4472a, blazer: 0x1f2433, bag: 0x3d7be0, acc: 'none' },
+  tessa: { skin: SKINS[3], hairStyle: 'long', hair: 0x2a2020, blazer: 0xd9a520, bag: 0x35d9a0, acc: 'bow' },
 };
+
+export const NPC_LOOKS = Object.fromEntries(
+  NPC_IDS.map((id) => [id, { ...BASE_LOOKS[id], tie: YEAR_TIE[NPCS[id].year - 1] }]),
+) as Record<NpcId, Look>;
+
+/** A professor's look, derived from their name so the same professor always looks the same. */
+export function professorLook(name: string): Look {
+  const r = mulberry32(hashStr(name));
+  return {
+    skin: pick(r, SKINS),
+    hairStyle: pick(r, ['short', 'bob', 'bun', 'long'] as HairStyle[]),
+    hair: pick(r, [0x2a2020, 0x5a3a22, 0xc9ccd6, 0x8a8f9a, 0xb4472a]),
+    blazer: pick(r, [0x444b57, 0x5a4a3a, 0x2f3a4a, 0x6a3a3a]),
+    bag: 0x2a2a30,
+    acc: pick(r, ['none', 'glasses', 'glasses'] as Accessory[]),
+    pants: 0x2a2d38,
+    tie: pick(r, [0x8a2f3f, 0x2f4a8a, 0x2f7a4b]),
+  };
+}
 
 export function randomLook(rng: Rng): Look {
   return {
