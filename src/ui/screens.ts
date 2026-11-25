@@ -40,10 +40,11 @@ export function helpScreen(): Promise<void> {
     'How to play',
     `<b>Goal:</b> survive four years (8 semesters), ace your courses, make friends in every year and graduate with the best rank you can.<br><br>
     🕘 <b>Every day has 6 periods</b>: three lectures, lunch, after class and evening. Check the 📌 notice board for today’s rooms.<br>
-    🏫 <b>Lectures are held in real classrooms.</b> Walk to the building, press <b>E</b> at the door, find the glowing seat, sit down (<b>E</b>) and the lesson starts. Chat with the professor first for a study tip.<br>
+    🏫 <b>Five department buildings, five storeys each.</b> Every course has its own numbered room (first-year courses low down, final-year courses on the top floors). Check the 📌 notice board or the lobby directory, walk into the right building and <b>climb the stairs</b> at the end of the corridor. Find the room number on the door, press <b>E</b>, take the glowing seat (<b>E</b>) and the lesson starts. Chat with the professor first for a study tip.<br>
     🔔 <b>Lectures</b> and <b>midterms</b> are quick quizzes. Keep a streak for a combo bonus! <b>Finals Day</b> ends each semester with a boss fight.<br>
     🎓 <b>Meet every year.</b> Upperclassmen give advice, younger students look up to you, and your year changes as you progress.<br>
-    🎵 <b>Clubs</b> (gym, music room, lab) are mini-games that raise your stats and earn coins.<br>
+    🍜 <b>The canteen is a real room.</b> Walk in, order at the hot-food counter, carry your tray to a table and sit down to eat (lunch uses the period). Friends eat there too, so sit near them! The store and vending machines are open all day.<br>
+    🎭 <b>The Club House</b> holds five clubs: chess, music, dance, debate and sports, each in its own themed room. Joining is <b>mandatory</b>: every semester you register for <b>one or two</b> clubs (never more) and must attend. Sessions are mini-games that raise your stats and earn coins.<br>
     ⚡ <b>Energy & stress</b> matter: tired students answer slower. Eat, relax on the rooftop and sleep.<br>
     💬 <b>Friends</b> unlock story scenes and permanent bonuses. Gifts help!<br>
     ⭐ Explore! Gold stars and cats are hidden around campus.<br><br>

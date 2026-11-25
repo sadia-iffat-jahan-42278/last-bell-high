@@ -2,6 +2,7 @@
 import {
   ACHIEVEMENTS,
   AFTER_PERIOD,
+  CLUB_MAX,
   COURSES,
   CURRICULUM,
   DAYS_PER_TERM,
@@ -19,12 +20,14 @@ import {
   semesterTimetable,
   xpForLevel,
   yearOfTerm,
+  type Course,
   type TimetableEntry,
 } from './data';
 import type {
   AchievementId,
   ActiveEvent,
   BonusKey,
+  ClubId,
   CourseId,
   Daily,
   GameState,
@@ -40,6 +43,7 @@ import type {
   SubjectId,
   Weather,
 } from './types';
+import { CLUB_IDS } from './types';
 import { clamp, hashStr, mulberry32, type Rng } from './util';
 
 export const SAVE_KEY = 'lastbell.save.v2';
@@ -98,7 +102,10 @@ export function newState(name: string, look: Look, meta: Meta = defaultMeta()): 
     mastery: Object.fromEntries(SUBJECT_IDS.map((k) => [k, 0])) as GameState['mastery'],
     touched: {},
     records: Array.from({ length: TERMS }, () => ({ class: {}, test: {}, final: {} })),
-    clubs: { sports: { xp: 0, best: 0 }, music: { xp: 0, best: 0 }, science: { xp: 0, best: 0 } },
+    clubs: Object.fromEntries(CLUB_IDS.map((k) => [k, { xp: 0, best: 0 }])) as GameState['clubs'],
+    memberships: Array.from({ length: TERMS }, () => []),
+    sessions: Array.from({ length: TERMS }, () => ({})),
+    seenQ: {},
     showcase: [],
     friends: Object.fromEntries(
       npcIds.map((k) => [k, { rel: 0, story: 0, talked: -1, gift: -1 }]),
@@ -316,6 +323,41 @@ export function addRel(s: GameState, npc: NpcId, v: number): number {
 export const clubLevel = (xp: number): number => Math.min(10, 1 + Math.floor(xp / 60));
 export const clubProgress = (xp: number): number => (clubLevel(xp) >= 10 ? 1 : (xp % 60) / 60);
 
+/**
+ * How hard the questions for a course are right now, from 1 (first-week) to 4.4 (hardest). A harder course, a later
+ * day in the semester and a later semester in the degree all raise it.
+ */
+export const courseLevel = (s: GameState, c: Course, bonus = 0): number =>
+  clamp(0.6 * c.tier + 0.4 + 1.4 * (dayInTerm(s) / (DAYS_PER_TERM - 1)) + 0.05 * c.sem + bonus, 1, 4.4);
+
+/* ---------- club membership: one or two clubs per semester, and joining is mandatory ---------- */
+/** The clubs the player belongs to this semester (empty until they register). */
+export const members = (s: GameState, t = term(s)): ClubId[] => s.memberships[t] ?? [];
+export const isMember = (s: GameState, club: ClubId): boolean => members(s).includes(club);
+/** True while the player still has to register for this semester's clubs. */
+export const needsClubs = (s: GameState): boolean => members(s).length === 0;
+/** Register for this semester. Rejects an empty choice, duplicates and more than `CLUB_MAX` clubs. */
+export function joinClubs(s: GameState, ids: ClubId[]): boolean {
+  const uniq = [...new Set(ids)].filter((id) => (CLUB_IDS as readonly string[]).includes(id));
+  if (uniq.length < 1 || uniq.length > CLUB_MAX || uniq.length !== ids.length) return false;
+  const t = term(s);
+  if (!s.memberships[t]) s.memberships[t] = [];
+  if (s.memberships[t].length) return false; // already registered this semester
+  s.memberships[t] = uniq;
+  s.sessions[t] = {};
+  return true;
+}
+/** Count one club session this semester. */
+export function addSession(s: GameState, club: ClubId): number {
+  const t = term(s);
+  const row = (s.sessions[t] ??= {});
+  return (row[club] = (row[club] ?? 0) + 1);
+}
+export const sessionsOf = (s: GameState, club: ClubId, t = term(s)): number => s.sessions[t]?.[club] ?? 0;
+/** Clubs the player joined this semester but never attended. */
+export const skippedClubs = (s: GameState, t = term(s)): ClubId[] =>
+  members(s, t).filter((c) => sessionsOf(s, c, t) === 0);
+
 /* ---------- grades & rank ---------- */
 export function recordScore(s: GameState, kind: RecordKind, course: CourseId, pct: number): void {
   const r = s.records[term(s)][kind];
@@ -457,7 +499,9 @@ export function checkAchievements(s: GameState): (typeof ACHIEVEMENTS)[number][]
     boss: t.bosses > 0,
     rhythmS: !!f.rhythmS,
     dodge: !!f.dodgeFlawless,
-    eureka: !!f.lab7,
+    chessAce: !!f.chessAce,
+    danceS: !!f.danceS,
+    debateS: !!f.debateS,
     caught: s.caught > 0,
     rebel: !!f.rebel,
     rank1: !!f.rank1,
@@ -519,7 +563,19 @@ export function migrateSave(raw: unknown): GameState | null {
   for (const k of NESTED_KEYS) {
     if (isRecord(raw[k])) out[k] = { ...(base[k] as Json), ...(raw[k] as Json) };
   }
-  return out as unknown as GameState;
+  const s = out as unknown as GameState;
+  // Saves from before the Club House: drop the old Science Club entries and fill in the new fields.
+  const valid = (id: unknown): id is ClubId => (CLUB_IDS as readonly unknown[]).includes(id);
+  for (const k of Object.keys(s.clubs)) if (!valid(k)) delete (s.clubs as Record<string, unknown>)[k];
+  s.showcase = (Array.isArray(s.showcase) ? s.showcase : []).filter((x) => valid(x?.club));
+  if (!Array.isArray(s.memberships) || s.memberships.length !== TERMS)
+    s.memberships = Array.from({ length: TERMS }, (_, t) =>
+      Array.isArray(s.memberships?.[t]) ? s.memberships[t].filter(valid).slice(0, CLUB_MAX) : [],
+    );
+  if (!Array.isArray(s.sessions) || s.sessions.length !== TERMS)
+    s.sessions = Array.from({ length: TERMS }, (_, t) => (isRecord(s.sessions?.[t]) ? s.sessions[t] : {}));
+  if (!isRecord(s.seenQ)) s.seenQ = {};
+  return s;
 }
 
 export function saveGame(s: GameState): boolean {

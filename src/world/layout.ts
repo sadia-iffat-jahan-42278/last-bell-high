@@ -12,7 +12,7 @@ export interface Door extends Point {
   w: number;
   h: number;
 }
-export type BuildingId = 'main' | 'library' | 'canteen' | 'lab' | 'music' | 'gym';
+export type BuildingId = 'main' | 'math' | 'cs' | 'lab' | 'econ' | 'library' | 'canteen' | 'club';
 export interface Building {
   id: BuildingId;
   name: string;
@@ -27,25 +27,61 @@ export interface Building {
   roof: number;
   accent: number;
   door: Door;
+  /** Department buildings are five storeys tall with a staircase inside. */
+  floors?: number;
 }
 
 export const BOUNDS = { x0: -49, x1: 49, z0: -45.5, z1: 49 };
 export const PLAZA = { x: 0, z: 6, r: 14 };
 export const BUILDINGS: Building[] = [
   {
+    // Hale Hall: Humanities, and the Grand Exam Hall on the ground floor.
     id: 'main',
     name: 'Hale Hall',
-    icon: '🏫',
+    icon: '🏛️',
     cx: 0,
-    cz: -30,
-    w: 40,
-    d: 12,
-    h: 11,
+    cz: -31,
+    w: 36,
+    d: 14,
+    h: 21,
     wall: 0xf0e0bd,
     trim: 0xa3433f,
     roof: 0x8a3b3b,
     accent: 0xc23b3b,
     door: { x: 0, z: -24, dx: 0, dz: 1, w: 4.2, h: 4.6 },
+    floors: 5,
+  },
+  {
+    id: 'math',
+    name: 'Newton Hall',
+    icon: '📐',
+    cx: -37,
+    cz: -33,
+    w: 16,
+    d: 14,
+    h: 21,
+    wall: 0xe4ecf7,
+    trim: 0x2f5fb8,
+    roof: 0x3a5a99,
+    accent: 0x3d7be0,
+    door: { x: -37, z: -26, dx: 0, dz: 1, w: 3.4, h: 4.2 },
+    floors: 5,
+  },
+  {
+    id: 'cs',
+    name: 'Lovelace Hall',
+    icon: '💻',
+    cx: 37,
+    cz: -33,
+    w: 16,
+    d: 14,
+    h: 21,
+    wall: 0xe3f0f0,
+    trim: 0x13867f,
+    roof: 0x2a8f8a,
+    accent: 0x1aa6a6,
+    door: { x: 37, z: -26, dx: 0, dz: 1, w: 3.4, h: 4.2 },
+    floors: 5,
   },
   {
     id: 'library',
@@ -79,48 +115,51 @@ export const BUILDINGS: Building[] = [
   },
   {
     id: 'lab',
-    name: 'Science Labs',
+    name: 'Curie Hall',
     icon: '🧪',
-    cx: -32,
+    cx: -33,
     cz: 14,
-    w: 14,
-    d: 12,
-    h: 7,
+    w: 16,
+    d: 14,
+    h: 21,
     wall: 0xdcefee,
     trim: 0x13867f,
     roof: 0x2a8f8a,
-    accent: 0x1aa6a6,
-    door: { x: -25, z: 14, dx: 1, dz: 0, w: 2.8, h: 3.6 },
+    accent: 0x35a85a,
+    door: { x: -25, z: 14, dx: 1, dz: 0, w: 3.4, h: 4.2 },
+    floors: 5,
   },
   {
-    id: 'music',
-    name: 'Music Hall',
-    icon: '🎵',
-    cx: 32,
-    cz: 14,
-    w: 14,
-    d: 12,
-    h: 6.5,
-    wall: 0xe9d9f3,
-    trim: 0x7a3fb0,
-    roof: 0x6b3d9c,
-    accent: 0x9b59d6,
-    door: { x: 25, z: 14, dx: -1, dz: 0, w: 2.8, h: 3.6 },
-  },
-  {
-    id: 'gym',
-    name: 'Gym',
-    icon: '🏀',
-    cx: 32,
+    id: 'econ',
+    name: 'Smith Hall',
+    icon: '📈',
+    cx: -33,
     cz: 38,
     w: 16,
     d: 14,
-    h: 8,
-    wall: 0xf3d8d4,
-    trim: 0xc23a30,
-    roof: 0x9a3a36,
-    accent: 0xe8453c,
-    door: { x: 24, z: 38, dx: -1, dz: 0, w: 3.4, h: 3.8 },
+    h: 21,
+    wall: 0xf6ecd2,
+    trim: 0xb8862b,
+    roof: 0x8a6420,
+    accent: 0xe0a02a,
+    door: { x: -25, z: 38, dx: 1, dz: 0, w: 3.4, h: 4.2 },
+    floors: 5,
+  },
+  {
+    // One building holds all five clubs (chess, music, dance, debate and sports), one room each.
+    id: 'club',
+    name: 'Club House',
+    icon: '🎭',
+    cx: 32,
+    cz: 26,
+    w: 16,
+    d: 30,
+    h: 8.5,
+    wall: 0xf6e8dc,
+    trim: 0xb23a6a,
+    roof: 0x6b3d9c,
+    accent: 0xff7a59,
+    door: { x: 24, z: 26, dx: -1, dz: 0, w: 3.6, h: 3.9 },
   },
 ];
 export const ROOF_STAIRS = { x: 15, z: -22, door: { x: 15, z: -20, dx: 0, dz: 1 } };
@@ -184,7 +223,7 @@ export const STARS: XZ[] = [
   [0, -42],
   [-47, 24],
   [47, 26],
-  [-37, 44],
+  [-46, 44],
   [36, 47.2],
   [-18, 44],
   [14, -12],

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AREA_DEPT,
   BANK,
   COURSES,
   CURRICULUM,
   DAYS_PER_TERM,
+  EXAM_HALL,
   GRADES,
   LECTURE_DAYS,
   LECTURE_PERIODS,
@@ -14,6 +16,7 @@ import {
   SUBJECT_IDS,
   TERMS,
   TOTAL_COURSES,
+  courseInRoom,
   finalPhases,
   gradeOf,
   semesterTimetable,
@@ -138,7 +141,7 @@ describe('curriculum and timetable', () => {
     for (const c of Object.values(COURSES)) {
       expect(c.prof.startsWith('Prof.'), c.id).toBe(true);
       expect(c.room.length).toBeGreaterThan(2);
-      expect(c.building).toBe(c.kind === 'lab' ? 'lab' : 'main');
+      expect(c.building).toBe(AREA_DEPT[c.area]);
     }
   });
 
@@ -428,5 +431,57 @@ describe('saves', () => {
     expect(back.revealedStar).toBe(-1);
     expect(back.friends.maya).toBeDefined();
     expect(Object.keys(back.friends).sort()).toEqual(Object.keys(NPCS).sort());
+  });
+});
+
+describe('department buildings', () => {
+  const courses = Object.values(COURSES);
+  const depts = ['main', 'math', 'cs', 'lab', 'econ'] as const;
+
+  it('puts every course in one of five department buildings, matched to its subject', () => {
+    for (const c of courses) expect(depts, c.name).toContain(c.building);
+    expect(new Set(courses.map((c) => c.building)).size).toBe(5);
+    for (const c of courses) {
+      if (c.area === 'math') expect(c.building).toBe('math');
+      if (c.area === 'cs') expect(c.building).toBe('cs');
+      if (c.area === 'science') expect(c.building).toBe('lab');
+      if (c.area === 'econ') expect(c.building).toBe('econ');
+      if (c.area === 'english' || c.area === 'history') expect(c.building).toBe('main');
+    }
+  });
+
+  it('gives every course its own classroom: a floor from 1 to 5 and a door slot, never shared', () => {
+    const seen = new Set<string>();
+    for (const c of courses) {
+      expect(c.floor, c.name).toBeGreaterThanOrEqual(1);
+      expect(c.floor, c.name).toBeLessThanOrEqual(5);
+      expect(c.slot, c.name).toBeGreaterThanOrEqual(0);
+      expect(c.slot, c.name).toBeLessThanOrEqual(4); // slot 5 is kept free for the Grand Exam Hall
+      const key = `${c.building}/${c.floor}/${c.slot}`;
+      expect(seen.has(key), `${c.name} shares a room (${key})`).toBe(false);
+      seen.add(key);
+      expect(c.room, c.name).toMatch(/^[A-Z]{3}-\d{3}$/);
+      expect(c.room.slice(4, 5), `${c.name}: the room number starts with its floor`).toBe(String(c.floor));
+    }
+  });
+
+  it('puts lower-year courses on lower floors', () => {
+    for (const d of depts) {
+      const list = courses.filter((c) => c.building === d);
+      for (let i = 1; i < list.length; i++) {
+        expect(list[i].sem, `${d} order`).toBeGreaterThanOrEqual(list[i - 1].sem);
+        expect(
+          list[i].floor,
+          `${list[i].name} should not be below ${list[i - 1].name}`,
+        ).toBeGreaterThanOrEqual(list[i - 1].floor);
+      }
+    }
+  });
+
+  it('finds the course in a room, and keeps the Grand Exam Hall in Hale Hall on the ground floor', () => {
+    for (const c of courses) expect(courseInRoom(c.building, c.floor, c.slot)?.id).toBe(c.id);
+    expect(courseInRoom('main', EXAM_HALL.floor, EXAM_HALL.slot)).toBeNull();
+    expect(EXAM_HALL.building).toBe('main');
+    expect(EXAM_HALL.floor).toBe(1);
   });
 });

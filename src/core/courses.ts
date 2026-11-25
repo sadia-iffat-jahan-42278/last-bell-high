@@ -1,6 +1,6 @@
 // The university curriculum: 8 semesters, 8-10 courses each, plus the deterministic weekly timetable.
 // Pure data and maths, so it is unit-tested in plain Node.
-import type { ClassBuilding, CourseId, RoomKind, SubjectId } from './types';
+import { DEPT_IDS, type ClassBuilding, type CourseId, type RoomKind, type SubjectId } from './types';
 import { mulberry32 } from './util';
 
 export interface Course {
@@ -17,12 +17,41 @@ export interface Course {
   year: number;
   kind: RoomKind;
   building: ClassBuilding;
-  /** Room label, e.g. `LH-101`. */
+  /** Floor of its department building, 1..5 (first-year courses sit low, final-year courses high). */
+  floor: number;
+  /** Which of the floor's six classrooms (0..5). */
+  slot: number;
+  /** Room label, e.g. `MTH-203`. */
   room: string;
   prof: string;
 }
 
-export const BUILDING_LABEL: Record<ClassBuilding, string> = { main: 'Hale Hall', lab: 'Science Labs' };
+/** Floors in every department building, and classrooms on each floor. */
+export const FLOORS = 5;
+export const SLOTS_PER_FLOOR = 6;
+
+/** The five department buildings. Each subject area belongs to exactly one of them. */
+export const DEPARTMENTS: Record<
+  ClassBuilding,
+  { hall: string; school: string; code: string; icon: string; color: number }
+> = {
+  main: { hall: 'Hale Hall', school: 'Humanities', code: 'HUM', icon: '🏛️', color: 0xc23b3b },
+  math: { hall: 'Newton Hall', school: 'Mathematics', code: 'MTH', icon: '📐', color: 0x3d7be0 },
+  cs: { hall: 'Lovelace Hall', school: 'Computer Science', code: 'CSC', icon: '💻', color: 0x1aa6a6 },
+  lab: { hall: 'Curie Hall', school: 'Sciences', code: 'SCI', icon: '🧪', color: 0x35a85a },
+  econ: { hall: 'Smith Hall', school: 'Economics', code: 'ECO', icon: '📈', color: 0xe0a02a },
+};
+export const AREA_DEPT: Record<SubjectId, ClassBuilding> = {
+  math: 'math',
+  cs: 'cs',
+  science: 'lab',
+  econ: 'econ',
+  english: 'main',
+  history: 'main',
+};
+export const BUILDING_LABEL: Record<ClassBuilding, string> = Object.fromEntries(
+  DEPT_IDS.map((d) => [d, DEPARTMENTS[d].hall]),
+) as Record<ClassBuilding, string>;
 
 export const ROOM_KIND_NAME: Record<RoomKind, string> = {
   lecture: 'Lecture Hall',
@@ -30,7 +59,6 @@ export const ROOM_KIND_NAME: Record<RoomKind, string> = {
   lab: 'Laboratory',
   computer: 'Computer Lab',
 };
-const ROOM_PREFIX: Record<RoomKind, string> = { lecture: 'LH', seminar: 'SR', lab: 'LAB', computer: 'CL' };
 
 /** Professors per subject area, cycled through as courses are generated. */
 const PROFS: Record<SubjectId, string[]> = {
@@ -160,10 +188,8 @@ export const CURRICULUM: CourseId[][] = [];
   const profIdx: Partial<Record<SubjectId, number>> = {};
   CATALOG.forEach((rows, sem) => {
     const ids: CourseId[] = [];
-    const roomCount: Partial<Record<RoomKind, number>> = {};
     rows.forEach(([name, area, tier, kind], i) => {
       const id = `${CODE[area].toLowerCase()}${sem + 1}_${i + 1}`;
-      const n = (roomCount[kind] = (roomCount[kind] ?? 0) + 1);
       const k = (profIdx[area] = (profIdx[area] ?? -1) + 1);
       const profs = PROFS[area];
       COURSES[id] = {
@@ -175,8 +201,10 @@ export const CURRICULUM: CourseId[][] = [];
         sem,
         year: Math.floor(sem / 2) + 1,
         kind,
-        building: kind === 'lab' ? 'lab' : 'main',
-        room: `${ROOM_PREFIX[kind]}-${(sem % 4) + 1}0${n}`,
+        building: AREA_DEPT[area],
+        floor: 1,
+        slot: 0,
+        room: '',
         prof: profs[k % profs.length],
       };
       ids.push(id);
@@ -185,12 +213,37 @@ export const CURRICULUM: CourseId[][] = [];
   });
 })();
 
+// Rooms: each department building lists its courses in catalogue order (first year first) and hands out classrooms
+// floor by floor, so first-year courses sit on the low floors and final-year courses on the top ones.
+// Slot 5 of the ground floor in Hale Hall is kept for the Grand Exam Hall.
+(() => {
+  for (const dept of DEPT_IDS) {
+    const list = Object.values(COURSES).filter((c) => c.building === dept);
+    const perFloor = Math.min(SLOTS_PER_FLOOR - 1, Math.ceil(list.length / FLOORS));
+    list.forEach((c, i) => {
+      c.floor = 1 + Math.floor(i / perFloor);
+      c.slot = i % perFloor;
+      c.room = `${DEPARTMENTS[dept].code}-${c.floor}${String(c.slot + 1).padStart(2, '0')}`;
+    });
+  }
+})();
+
 export const TOTAL_COURSES = Object.keys(COURSES).length;
+
+/** The course taught in a department building's classroom, if any. */
+export function courseInRoom(building: ClassBuilding, floor: number, slot: number): Course | null {
+  return (
+    Object.values(COURSES).find((c) => c.building === building && c.floor === floor && c.slot === slot) ??
+    null
+  );
+}
 
 /** The grand hall used for midterm-style exams and finals. */
 export const EXAM_HALL = {
   name: 'Grand Exam Hall',
-  room: 'GH-1',
+  room: 'HUM-GH',
+  floor: 1,
+  slot: SLOTS_PER_FLOOR - 1,
   kind: 'lecture' as RoomKind,
   building: 'main' as ClassBuilding,
 };

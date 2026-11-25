@@ -138,7 +138,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
             const c = COURSES[id];
             const sc = St.courseScore(s, t, id);
             const grade = sc === null ? '—' : `${gradeOf(sc / 100).letter} · ${Math.round(sc)}%`;
-            return `<div class="statrow"><span class="nm" style="width:auto;flex:1">${SUBJECTS[c.area].icon} <b>${c.name}</b> <small>${c.code} · ${ROOM_KIND_NAME[c.kind]} ${c.room} (${BUILDING_LABEL[c.building]}) · ${c.prof}${meets(id)}${St.testCourse(s) === id ? ' · 📝 midterm' : ''}</small></span><b class="wide">${grade}</b></div>`;
+            return `<div class="statrow"><span class="nm" style="width:auto;flex:1">${SUBJECTS[c.area].icon} <b>${c.name}</b> <small>${c.code} · ${ROOM_KIND_NAME[c.kind]} ${c.room} (${BUILDING_LABEL[c.building]}, floor ${c.floor}) · ${c.prof}${meets(id)}${St.testCourse(s) === id ? ' · 📝 midterm' : ''}</small></span><b class="wide">${grade}</b></div>`;
           })
           .join('');
         const history = Array.from({ length: t }, (_, i) => {
@@ -169,10 +169,17 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
         const clubs = (Object.entries(CLUBS) as [ClubId, (typeof CLUBS)[ClubId]][])
           .map(
             ([id, C]) =>
-              `<div class="statrow"><span class="nm">${C.icon} ${C.name.replace(' Club', '')}</span>${meter(St.clubProgress(s.clubs[id].xp) * 100, 100, C.color)}<b class="wide">Lv ${St.clubLevel(s.clubs[id].xp)}</b></div>`,
+              `<div class="statrow"><span class="nm">${C.icon} ${C.name.replace(' Club', '')}${St.isMember(s, id) ? ' ✅' : ''}</span>${meter(St.clubProgress(s.clubs[id].xp) * 100, 100, C.color)}<b class="wide">Lv ${St.clubLevel(s.clubs[id].xp)}</b></div>`,
           )
           .join('');
-        b.innerHTML = `<div class="grid2">${subjects}</div><div class="box spaced"><h4>Clubs</h4>${clubs}</div>`;
+        b.innerHTML = `<div class="grid2">${subjects}</div><div class="box spaced"><h4>Clubs</h4>${clubs}<div class="note2">Semester ${St.term(s) + 1}: ${
+          St.members(s)
+            .map(
+              (id) =>
+                `${CLUBS[id].icon} ${CLUBS[id].name} (${St.sessionsOf(s, id)} session${St.sessionsOf(s, id) === 1 ? '' : 's'})`,
+            )
+            .join(' · ') || 'not registered yet'
+        }. Joining is mandatory: one or two clubs each semester, and you must attend.</div></div>`;
       },
 
       friends(b) {

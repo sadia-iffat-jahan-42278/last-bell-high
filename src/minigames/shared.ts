@@ -11,8 +11,10 @@ export interface ArcadeConfig {
   seed: number;
   /** Showcase day: harder. */
   hard: boolean;
-  /** 0-based term index. */
+  /** 0-based difficulty step (0..2) for the older arcade games. */
   term: number;
+  /** 0-based semester (0..7) for games that scale over the whole degree. */
+  sem: number;
   look: Look;
 }
 

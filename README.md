@@ -25,6 +25,19 @@ security headers) or run `vercel` from this folder.
 - **Classrooms:** lectures are held in walk-in rooms (lecture hall, seminar room, lab, computer lab). Walk to
   Hale Hall or the Science Labs, press **E** at the door, find the glowing seat and press **E** to sit down and start the
   lesson. Talk to the professor first for a study tip.
+- **Department buildings:** classrooms are split into five department buildings, each five storeys tall with a
+  lobby, a corridor on every floor and a real staircase you walk up and down: Hale Hall (Humanities, plus the Grand
+  Exam Hall), Newton Hall (Mathematics), Lovelace Hall (Computer Science), Curie Hall (Sciences) and Smith Hall
+  (Economics). Every course has its own numbered room (for example `MTH-401`); first-year courses sit on the low
+  floors and final-year courses on the top ones, and each department's classrooms have their own colours.
+- **The Club House:** all five clubs (chess, music, dance, debate and sports) live in one building, each in its own
+  themed room reached from a lobby: a giant floor chessboard, a stage with a drum kit and grand piano, a mirrored
+  dance studio, a debate hall with podiums and a judges' table, and an indoor basketball court. Joining is mandatory:
+  at the start of every semester you register for **one or two clubs** (never more) and must attend, or you get a
+  warning on your semester report.
+- **Questions that fit the course:** every course has its own question bank (71 of them) plus number generators, so
+  Calculus asks calculus, Cryptography asks ciphers and keys. Difficulty rises through the semester and across the
+  degree, and a question is not asked again until the course's whole pool has been used.
 - **Friends from every year:** 16 students, four per academic year (freshman to senior). Whether someone is above you,
   in your year or below you changes as you progress, so upperclassmen give study tips and younger students look up to you.
   Each friend has three story scenes and perks.
@@ -33,16 +46,16 @@ security headers) or run `vercel` from this folder.
 
 ## Layout
 
-| Path | What lives there |
-|---|---|
-| `src/core/` | Pure rules and content, no DOM / WebGL: `types.ts` (the whole save shape), `courses.ts` (catalogue + timetable), `state.ts` (calendar, perks, grades, rank, quests, friend bonuses, saves), `data.ts` + `bank.ts` + `npcs.ts` + `npcsMore.ts` (content tables), `questions.ts` (math generator + question bank) |
-| `src/world/` | Pure campus data: `layout.ts` (buildings, zones, spawn points, friend hangouts), `lighting.ts` (time-of-day / weather), `collision.ts` |
-| `src/render/` | Three.js: `view.ts` (renderer, sky, fog, sun + shadows), `campus.ts` (merged static geometry + animated props), `rooms.ts` (classroom interiors), `batch.ts` (geometry merging), `characters.ts` (incl. seated pose, professors), `parts.ts` |
-| `src/ui/` | DOM overlays: `ui.ts` (promise-based dialogs, menus, results), `hud.ts`, `screens.ts` (title, settings, creator) |
-| `src/minigames/` | `quiz.ts` (lectures, midterms, finals boss) and the three club games: `rhythm.ts`, `dodge.ts`, `lab.ts` |
-| `src/game.ts` | The controller: day / period flow, classrooms, every activity, rewards, events, reports, endings |
-| `src/scene.ts`, `src/input.ts`, `src/main.ts` | Live 3D scene (campus and classroom modes), input handling, boot and title flow |
-| `tests/` | Vitest suites for the rules layer, curriculum, friends, the world geometry and the classroom interiors |
+| Path                                          | What lives there                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/`                                   | Pure rules and content, no DOM / WebGL: `types.ts` (the whole save shape), `courses.ts` (catalogue + timetable), `state.ts` (calendar, perks, grades, rank, quests, friend bonuses, saves), `data.ts` + `bank.ts` + `npcs.ts` + `npcsMore.ts` (content tables), `questions.ts` (course question selection: relevance, rising difficulty, no repeats), `qbank/` (hand-written questions for all 71 courses), `qgen.ts` (number-based question generators)                   |
+| `src/world/`                                  | Pure campus data: `layout.ts` (buildings, zones, spawn points, friend hangouts), `lighting.ts` (time-of-day / weather), `collision.ts`                                                                                                                                                                                                                                                                                                                                     |
+| `src/render/`                                 | Three.js: `view.ts` (renderer, sky, fog, sun + shadows), `campus.ts` (merged static geometry + animated props), `rooms.ts` (classroom interiors), `clubhouse.ts` (Club House lobby + the five themed club rooms), `departments.ts` (corridor floors and staircases of the five department buildings), `canteen.ts` (walk-in canteen: counter, tables, vending machines, store), `batch.ts` (geometry merging), `characters.ts` (incl. seated pose, professors), `parts.ts` |
+| `src/ui/`                                     | DOM overlays: `ui.ts` (promise-based dialogs, menus, results), `hud.ts`, `screens.ts` (title, settings, creator)                                                                                                                                                                                                                                                                                                                                                           |
+| `src/minigames/`                              | `quiz.ts` (lectures, midterms, finals boss) and the five club games: `chess.ts` (verified puzzles), `rhythm.ts` (music), `dance.ts`, `debate.ts` (name the fallacy), `dodge.ts` (sports)                                                                                                                                                                                                                                                                                   |
+| `src/game.ts`                                 | The controller: day / period flow, classrooms, every activity, rewards, events, reports, endings                                                                                                                                                                                                                                                                                                                                                                           |
+| `src/scene.ts`, `src/input.ts`, `src/main.ts` | Live 3D scene (campus and classroom modes), input handling, boot and title flow                                                                                                                                                                                                                                                                                                                                                                                            |
+| `tests/`                                      | Vitest suites for the rules layer, curriculum, friends, the world geometry and the classroom interiors                                                                                                                                                                                                                                                                                                                                                                     |
 
 Everything under `src/core/` and `src/world/` is independent of the browser, so it is covered by tests that run in
 plain Node. Saves are stored in `localStorage` under `lastbell.save.v2` (old high-school `v1` saves cannot be converted);

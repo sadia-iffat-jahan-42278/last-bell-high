@@ -26,11 +26,14 @@ export type NpcId = (typeof NPC_IDS)[number];
 export type CourseId = string;
 /** The kind of classroom a course meets in. */
 export type RoomKind = 'lecture' | 'seminar' | 'lab' | 'computer';
-/** Which campus building holds the classroom. */
-export type ClassBuilding = 'main' | 'lab';
+/** The five department buildings that hold the classrooms: Hale (humanities), Newton (maths), Lovelace (computing), Curie (sciences) and Smith (economics). */
+export const DEPT_IDS = ['main', 'math', 'cs', 'lab', 'econ'] as const;
+export type ClassBuilding = (typeof DEPT_IDS)[number];
 /** How a student stands relative to you: older (senior), same year (peer) or younger (junior). */
 export type Relation = 'senior' | 'peer' | 'junior';
-export type ClubId = 'sports' | 'music' | 'science';
+/** The five clubs, all housed in the Club House. */
+export const CLUB_IDS = ['chess', 'music', 'dance', 'debate', 'sports'] as const;
+export type ClubId = (typeof CLUB_IDS)[number];
 export type StatId = 'int' | 'foc' | 'sta' | 'cha' | 'cre';
 export type ItemId = 'drink' | 'snack' | 'notes' | 'tea' | 'pen' | 'skip' | 'cheat';
 export type PerkId =
@@ -44,7 +47,7 @@ export type PerkId =
   | 'coupon'
   | 'iron'
   | 'pitch'
-  | 'eureka'
+  | 'spotlight'
   | 'hint'
   | 'lucky'
   | 'scholar';
@@ -75,7 +78,9 @@ export type AchievementId =
   | 'boss'
   | 'rhythmS'
   | 'dodge'
-  | 'eureka'
+  | 'chessAce'
+  | 'danceS'
+  | 'debateS'
   | 'caught'
   | 'rebel'
   | 'rank1'
@@ -92,7 +97,7 @@ export type LetterGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
 export type Accessory = 'none' | 'glasses' | 'cap' | 'headphones' | 'beanie' | 'bow' | 'crown';
 export type HairStyle = 'short' | 'long' | 'pony' | 'spiky' | 'bun' | 'bob';
 /** Building / zone ids the player can interact with. */
-export type ZoneId = 'main' | 'library' | 'canteen' | 'lab' | 'music' | 'gym' | 'roof' | 'gate' | 'notice';
+export type ZoneId = ClassBuilding | 'library' | 'canteen' | 'club' | 'roof' | 'gate' | 'notice';
 
 export interface Look {
   skin: number;
@@ -110,11 +115,25 @@ export interface Question {
   q: string;
   opts: string[];
   ans: number;
+  /** Subject area (colours and mastery). */
   subject: SubjectId;
+  /** The course this question belongs to, when it was drawn from one. */
+  course?: CourseId;
+  /** Difficulty 1..4. */
+  tier?: number;
 }
 
 export type BoolFlag =
-  'rinWager' | 'rinFriend' | 'rinNemesis' | 'rebel' | 'rank1' | 'rhythmS' | 'dodgeFlawless' | 'lab7';
+  | 'rinWager'
+  | 'rinFriend'
+  | 'rinNemesis'
+  | 'rebel'
+  | 'rank1'
+  | 'rhythmS'
+  | 'dodgeFlawless'
+  | 'chessAce'
+  | 'danceS'
+  | 'debateS';
 export type Flags = Partial<Record<BoolFlag, boolean>> & { sleep?: 'early' | 'late' | 'game' };
 
 export interface QuestProgress {
@@ -191,6 +210,12 @@ export interface GameState {
   touched: Partial<Record<SubjectId, boolean>>;
   records: TermRecord[];
   clubs: Record<ClubId, { xp: number; best: number }>;
+  /** Clubs joined in each semester (1 or 2, chosen at registration; joining is mandatory). */
+  memberships: ClubId[][];
+  /** Club sessions attended in each semester. */
+  sessions: Partial<Record<ClubId, number>>[];
+  /** Questions already asked, as hashes per course (or subject area), so quizzes do not repeat. */
+  seenQ: Record<string, number[]>;
   showcase: { term: number; club: ClubId; place: LetterGrade }[];
   friends: Record<NpcId, FriendState>;
   items: Partial<Record<ItemId, number>>;

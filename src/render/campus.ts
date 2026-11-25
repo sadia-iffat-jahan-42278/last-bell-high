@@ -1,6 +1,6 @@
 // Builds the 3D campus: static geometry (merged for speed), collision shapes and animated props.
 import { Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, type BufferGeometry } from 'three';
-import { Batch, prim } from './batch';
+import { Batch } from './batch';
 import { SH, part } from './parts';
 import { mulberry32 } from '../core/util';
 import type { Collider } from '../world/collision';
@@ -23,8 +23,6 @@ import { lin } from '../world/lighting';
 type Keepout =
   | { c: true; x: number; z: number; r: number }
   | { c?: false; x0: number; x1: number; z0: number; z1: number };
-
-const G_cyl = prim.cyl;
 
 /** The static campus geometry in four merged layers, plus the colliders produced alongside it. */
 export function buildCampusGeometry() {
@@ -59,38 +57,19 @@ export function buildCampusGeometry() {
   path(-25, -4.5, -9.8, -6.2);
   path(4.5, 25, -9.8, -6.2);
   path(-25, -4.5, 12.2, 15.8);
-  path(4.5, 25, 12.2, 15.8);
-  path(4.5, 24, 36.2, 39.8);
+  path(4.5, 24, 24.2, 27.8); // to the Club House
   path(-12, 12, -25, -20.5); // front steps area
   path(12.5, 17.5, -21, -16); // roof tower landing
+  path(-25, -4.5, 36.2, 39.8); // Smith Hall
+  path(-38.8, -35.2, -26, -17.2); // Newton Hall
+  path(-38.8, -4.5, -20.8, -17.2);
+  path(35.2, 38.8, -26, -17.2); // Lovelace Hall
+  path(4.5, 38.8, -20.8, -17.2);
   Gd.cyl(PLAZA.x, 0.03, PLAZA.z, PLAZA.r + 0.5, PLAZA.r + 0.5, 0.05, paveEdge, 40);
   Gd.cyl(PLAZA.x, 0.06, PLAZA.z, PLAZA.r, PLAZA.r, 0.05, paveC, 40);
   Gd.cyl(PLAZA.x, 0.09, PLAZA.z, 7.2, 7.2, 0.04, 0xd2c8b2, 40);
   Gd.cyl(PLAZA.x, 0.1, PLAZA.z, 6.6, 6.6, 0.04, 0xe9e2d3, 40);
   keepout.push({ c: true, x: PLAZA.x, z: PLAZA.z, r: PLAZA.r + 1 });
-  // sports field
-  const FX = -30,
-    FZ = 38;
-  Gd.box(FX, 0.05, FZ, 28, 0.04, 18, 0x5fa84e);
-  for (let i = 0; i < 7; i++) Gd.box(FX - 12 + i * 4, 0.08, FZ, 4, 0.03, 16, i % 2 ? 0x6ab957 : 0x74c460);
-  const line = (x: number, z: number, w: number, d: number) => Gd.box(x, 0.11, z, w, 0.02, d, 0xffffff);
-  line(FX, FZ - 8, 24.2, 0.2);
-  line(FX, FZ + 8, 24.2, 0.2);
-  line(FX - 12, FZ, 0.2, 16.2);
-  line(FX + 12, FZ, 0.2, 16.2);
-  line(FX, FZ, 0.2, 16);
-  Gd.cyl(FX, 0.115, FZ, 2.6, 2.6, 0.02, 0xffffff, 28);
-  Gd.cyl(FX, 0.12, FZ, 2.42, 2.42, 0.02, 0x6ab957, 28);
-  for (const s of [-1, 1]) {
-    // goals
-    const gx = FX + s * 12;
-    S.box(gx, 1.1, FZ - 2.2, 0.15, 2.2, 0.15, 0xffffff);
-    S.box(gx, 1.1, FZ + 2.2, 0.15, 2.2, 0.15, 0xffffff);
-    S.box(gx, 2.2, FZ, 0.15, 0.15, 4.5, 0xffffff);
-    S.box(gx + s * 1.1, 1.1, FZ, 0.05, 2.1, 4.4, 0xeeeeee);
-  }
-  keepout.push({ x0: FX - 16, x1: FX + 16, z0: FZ - 11, z1: FZ + 11 });
-
   /* --- buildings --- */
   const darker = (hex: number, f: number) => {
     const r = ((hex >> 16) & 255) * f,
@@ -107,13 +86,13 @@ export function buildCampusGeometry() {
     ];
     const ww = 1.5,
       wh = 1.8,
-      rows = b.id === 'gym' ? 1 : Math.max(1, Math.floor((b.h - 2) / 3.6));
+      rows = b.floors ?? Math.max(1, Math.floor((b.h - 2) / 3.6));
     for (const f of faces) {
       const alongX = f.nz !== 0,
         len = alongX ? b.w : b.d,
         n = Math.max(1, Math.floor((len - 3) / 3.8));
       for (let r = 0; r < rows; r++) {
-        const y = b.id === 'gym' ? 5.6 : 2.5 + r * 3.7;
+        const y = b.floors ? 0.7 + (r + 0.5) * ((b.h - 0.7) / rows) : 2.5 + r * 3.7;
         for (let i = 0; i < n; i++) {
           const t = ((i + 0.5) / n) * len - len / 2;
           const x = alongX ? b.cx + t : b.cx + f.nx * (b.w / 2),
@@ -147,6 +126,9 @@ export function buildCampusGeometry() {
     S.box(cx, h / 2 + 0.2, cz, w, h - 0.4, d, b.wall);
     S.box(cx, 0.9, cz, w + 0.25, 0.8, d + 0.25, darker(b.wall, 0.82));
     S.box(cx, h - 0.35, cz, w + 0.5, 0.5, d + 0.5, b.trim);
+    // a band of trim between every pair of storeys
+    if (b.floors)
+      for (let f = 1; f < b.floors; f++) S.box(cx, (f * h) / b.floors, cz, w + 0.4, 0.28, d + 0.4, b.trim);
     windowsFor(b);
     const dr = b.door,
       dw = dr.w,
@@ -238,12 +220,13 @@ export function buildCampusGeometry() {
           );
       }
       // rooftop stair tower
-      S.box(ROOF_STAIRS.x, 7, ROOF_STAIRS.z, 4, 14, 4, b.wall);
-      S.box(ROOF_STAIRS.x, 14.2, ROOF_STAIRS.z, 5, 0.5, 5, b.roof);
+      const TH = h + 1;
+      S.box(ROOF_STAIRS.x, TH / 2, ROOF_STAIRS.z, 4, TH, 4, b.wall);
+      S.box(ROOF_STAIRS.x, TH + 0.2, ROOF_STAIRS.z, 5, 0.5, 5, b.roof);
       S.box(ROOF_STAIRS.x, 2.1, ROOF_STAIRS.door.z + 0.05, 2.2, 3.4, 0.3, 0x3e5f8a);
       S.box(ROOF_STAIRS.x, 3.9, ROOF_STAIRS.door.z + 0.1, 3.0, 0.9, 0.3, 0x3d7be0);
       S.box(ROOF_STAIRS.x, 0.1, ROOF_STAIRS.door.z + 1.2, 3.6, 0.16, 1.4, 0xc9c1b0);
-      for (const y of [6, 9.5])
+      for (const y of [6, 9.5, 13, 16.5, 20].filter((v) => v < TH - 1))
         (S.box(ROOF_STAIRS.x, y, ROOF_STAIRS.door.z + 0.04, 1, 1.2, 0.1, 0xffffff),
           W.box(ROOF_STAIRS.x, y, ROOF_STAIRS.door.z + 0.1, 0.8, 1, 0.1, 0xffffff));
       box(ROOF_STAIRS.x - 2.1, ROOF_STAIRS.x + 2.1, ROOF_STAIRS.z - 2.1, ROOF_STAIRS.z + 2.1);
@@ -251,11 +234,6 @@ export function buildCampusGeometry() {
       S.cyl(-14, 4.5, -20, 0.08, 0.1, 9, 0xcccccc, 6);
       S.box(-13.1, 8.4, -20, 1.8, 1.1, 0.06, 0xd94a3a);
       circ(-14, -20, 0.4);
-    } else if (b.id === 'gym') {
-      S.box(cx, h + 0.2, cz, w + 0.6, 0.5, d + 0.6, b.trim);
-      S.add(G_cyl(7.6, 7.6, w + 1.6, 18, true), [cx, h + 0.2, cz], [0, 0, Math.PI / 2], [0.38, 1, 1], b.roof);
-      for (const o of [-1, 1]) S.box(cx + o * (w / 2 + 0.05), 1.8, cz, 0.1, 0.7, d - 1, b.trim);
-      S.box(cx, 3.2, cz + d / 2 + 0.06, w - 1, 0.5, 0.1, b.trim);
     } else if (b.id === 'canteen') {
       pitched(2.6, b.roof);
       S.box(cx + 4, h + 2.2, cz - 2, 1.2, 2.6, 1.2, 0x9a6a50);
@@ -306,15 +284,49 @@ export function buildCampusGeometry() {
       LG.cyl(cx, fy + 0.8, cz, 0.3, 1.25, 1.4, 0x6dffc0, 12);
       S.cyl(cx - 4.5, h + 3, cz - 2, 0.1, 0.1, 5, 0x777777, 6);
       S.cyl(cx - 4.5, h + 5.6, cz - 2, 1.0, 0.05, 0.5, 0xdddddd, 12, true, 0.6, 0);
-    } else if (b.id === 'music') {
-      pitched(2.2, b.roof);
-      S.sphere(cx - 0.4, h + 3.2, cz, 0.7, 0x2b1b3d, 10, 7, 0.8);
-      S.box(cx + 0.18, h + 5, cz, 0.18, 3.4, 0.18, 0x2b1b3d);
-      S.box(cx + 0.8, h + 6.5, cz, 1.1, 0.5, 0.18, 0x2b1b3d, 0, 0, -0.5);
+    } else if (b.id === 'math' || b.id === 'cs' || b.id === 'econ') {
+      // flat roof with a parapet and a landmark: a golden pi, a radio mast and dish, or a stack of coins
+      S.box(cx, h + 0.35, cz, w + 0.8, 0.7, d + 0.8, b.roof);
+      for (const [px, pz, pw, pd] of [
+        [0, d / 2 + 0.4, w + 1, 0.4],
+        [0, -d / 2 - 0.4, w + 1, 0.4],
+        [w / 2 + 0.4, 0, 0.4, d + 1],
+        [-w / 2 - 0.4, 0, 0.4, d + 1],
+      ])
+        S.box(cx + px, h + 1.0, cz + pz, pw, 0.7, pd, b.trim);
+      if (b.id === 'math') {
+        S.box(cx, h + 4.6, cz, 5.4, 0.7, 0.7, 0xe3b53c);
+        S.box(cx - 1.7, h + 2.8, cz, 0.7, 3.6, 0.7, 0xe3b53c);
+        S.box(cx + 1.7, h + 2.8, cz, 0.7, 3.6, 0.7, 0xe3b53c);
+      } else if (b.id === 'cs') {
+        S.cyl(cx + 4, h + 4.5, cz, 0.12, 0.16, 7.6, 0xcccccc, 6);
+        LG.cyl(cx + 4, h + 8.4, cz, 0.3, 0.3, 0.5, 0xff5a4a, 8);
+        S.cyl(cx - 3, h + 2.2, cz, 2.2, 0.4, 0.5, 0xe8eef0, 14, true, 0.9, 0);
+        S.cyl(cx - 3, h + 1.2, cz, 0.12, 0.12, 1.4, 0x888888, 6);
+      } else {
+        for (let i = 0; i < 4; i++) S.cyl(cx, h + 1.3 + i * 0.45, cz, 1.9, 1.9, 0.4, 0xe3b53c, 18);
+        S.cyl(cx, h + 3.3, cz, 1.9, 1.9, 0.12, 0xfff2b8, 18);
+      }
+    } else if (b.id === 'club') {
+      pitched(2.4, b.roof);
+      // One coloured wing per club along the front: chess, music, dance, debate, sports.
+      const wings = [0x5b6577, 0x9b59d6, 0xff5fa2, 0x3d7be0, 0xff7a59];
+      wings.forEach((col, i) => {
+        const z = cz - d / 2 + (i + 0.5) * (d / 5);
+        S.box(cx + b.door.dx * (w / 2 + 0.2), 6.5, z, 0.22, 1.1, d / 5 - 0.8, col);
+        S.box(cx + b.door.dx * (w / 2 + 0.34), 6.5, z, 0.08, 0.5, 2.2, 0xffffff);
+        S.box(cx, h + 2.5, z, 1.4, 0.55, d / 5 - 0.6, col);
+        // a tall banner pole beside each wing sign
+        S.cyl(b.door.x - 1.4, 2.4, z, 0.07, 0.09, 4.8, 0xcccccc, 6);
+        S.box(b.door.x - 1.4 + 0.45, 3.9, z, 0.9, 1.1, 0.05, col, Math.PI / 2);
+      });
+      // chess-board stripe above the entrance
+      for (let k = 0; k < 8; k++)
+        S.box(b.door.x - 0.12, 5.9, b.door.z - 3.5 + k * 1.0, 0.16, 0.5, 1.0, k % 2 ? 0x222222 : 0xffffff);
       for (const o of [-1, 1])
-        S.box(b.door.x + b.door.dx * 1.3, 0.8, b.door.z + o * 3.6, 1, 1.6, 0.9, 0x2a2a35);
+        S.box(b.door.x + b.door.dx * 1.3, 0.8, b.door.z + o * 4.2, 1, 1.6, 0.9, 0x2a2a35);
     }
-    if (b.id !== 'main' && b.id !== 'gym') S.box(cx, h + 0.1, cz, w + 0.9, 0.35, d + 0.9, b.trim);
+    if (b.id !== 'main') S.box(cx, h + 0.1, cz, w + 0.9, 0.35, d + 0.9, b.trim);
   }
   for (const b of BUILDINGS) building(b);
 

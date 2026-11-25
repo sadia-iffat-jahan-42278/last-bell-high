@@ -1,18 +1,88 @@
 // Walk-in classroom interiors. Each room kind is built once, far outside the campus, as one merged mesh.
 // The scene shows exactly one of them at a time and moves the player inside.
 import { Group, Mesh, MeshLambertMaterial } from 'three';
-import type { RoomKind } from '../core/types';
+import { DEPT_IDS, type ClassBuilding, type ClubId, type RoomKind } from '../core/types';
 import type { Bounds, Collider } from '../world/collision';
 import type { Point } from '../world/layout';
 import { Batch } from './batch';
+import { buildCanteen } from './canteen';
+import { buildClubhouse } from './clubhouse';
+import { buildFloor } from './departments';
+import { COURSES } from '../core/courses';
 
 export interface Seat extends Point {
   /** Facing angle (as used by `Character.yaw`). */
   yaw: number;
 }
 
+/** Every walk-in interior: the four classroom kinds, the canteen, the Club House lobby and the five club rooms. */
+export type InteriorKind = string;
+
+/** The three kinds of corridor floor in a department building: ground (entrance, stairs up), middle, top (stairs down). */
+export type FloorVariant = 'ground' | 'mid' | 'top';
+export const classKey = (building: ClassBuilding, kind: RoomKind): InteriorKind =>
+  `class:${building}:${kind}`;
+export const floorKey = (building: ClassBuilding, variant: FloorVariant): InteriorKind =>
+  `floor:${building}:${variant}`;
+
+/** What a department building's corridor floor adds on top of a normal interior. */
+export interface FloorExtras {
+  building: ClassBuilding;
+  variant: FloorVariant;
+  /** Where to stand to use each of the six classroom doors, in slot order. */
+  doors: Point[];
+  /** Where the player appears: through the entrance, up the stairs from below, down the stairs from above, or out of a classroom door. */
+  arrive: { entrance: Point; fromBelow: Point; fromAbove: Point; door: Point[] };
+  /** Walking to the end of a flight changes floor: the x limit and the lane's z range (world coordinates). */
+  up?: { x: number; z0: number; z1: number };
+  down?: { x: number; z0: number; z1: number };
+  /** Ground floor: the building directory board. */
+  directory?: Point;
+  /** Where the floor number sign hangs. */
+  stairSign: Point;
+  /** Floor height under (x, z): stairs rise to +4 (up flight) and sink to -4 (down flight). */
+  floorY: (x: number, z: number) => number;
+  people: Person[];
+}
+
+/** Someone (a classmate or a friend) who stands, sits, dances or plays somewhere in a club room. */
+export interface Person extends Seat {
+  pose: 'stand' | 'sit' | 'dance' | 'play' | 'playSit';
+  /** Floor height under the person (stage, bleachers). */
+  y?: number;
+}
+
+/** What the Club House lobby and the five club rooms add on top of a normal interior. */
+export interface ClubExtras {
+  /** The club this room belongs to; absent in the lobby. */
+  club?: ClubId;
+  /** Where the player takes part in the club activity, and the pose they take there. */
+  play?: Seat & { sit?: boolean; y?: number };
+  /** Lobby only: where to stand to open each club's door. */
+  doors?: { club: ClubId; at: Point }[];
+  /** Lobby only: where you reappear after leaving each club room. */
+  arrive?: Partial<Record<ClubId, Point>>;
+  /** Lobby only: the reception desk (stand here to talk to the registrar) and the registrar's spot. */
+  desk?: Point;
+  registrar?: Seat;
+  /** The people who fill the room. */
+  people: Person[];
+  /** Floor height at (x, z) when part of the room is raised (stage, podium). */
+  floorY?: (x: number, z: number) => number;
+}
+
+/** Extra points of interest that only the canteen has. */
+export interface CanteenExtras {
+  /** Stand here to order at the hot-food counter, use the campus store or the vending machines. */
+  order: Point;
+  store: Point;
+  vending: Point;
+  /** Where the kitchen staff stand (server, cashier, cook) and which way they face. */
+  staff: Seat[];
+}
+
 export interface RoomInterior {
-  kind: RoomKind;
+  kind: InteriorKind;
   group: Group;
   colliders: Collider[];
   bounds: Bounds;
@@ -28,6 +98,12 @@ export interface RoomInterior {
   /** Room centre (for camera clamps and lamps). */
   centre: Point;
   size: { w: number; d: number };
+  /** Canteen only. */
+  extras?: CanteenExtras;
+  /** Club House lobby and club rooms only. */
+  club?: ClubExtras;
+  /** Department building corridor floors only. */
+  floor?: FloorExtras;
 }
 
 interface RoomCfg {
@@ -45,7 +121,7 @@ const CFG: Record<RoomKind, RoomCfg> = {
 };
 
 const H = 3.8;
-const C = {
+const BASE = {
   floor: 0xc8a878,
   rug: 0x8a4a4a,
   wall: 0xf1ead9,
@@ -63,17 +139,42 @@ const C = {
   pot: 0xb36a4a,
 };
 
-export function createRooms(): Record<RoomKind, RoomInterior> {
-  return {
-    lecture: build('lecture'),
-    seminar: build('seminar'),
-    lab: build('lab'),
-    computer: build('computer'),
-  };
+/** Each department's classrooms have their own colours so you can tell which building you are in. */
+const THEMES: Record<ClassBuilding, Partial<typeof BASE>> = {
+  main: { wall: 0xf3e6cf, trim: 0x8a3b3b, rug: 0x8a4a4a },
+  math: { wall: 0xe6eefc, trim: 0x2f5fb8, rug: 0x3a5a99 },
+  cs: { wall: 0xe4eef0, trim: 0x13867f, rug: 0x2a6f6a },
+  lab: { wall: 0xe1f1ee, trim: 0x13867f, rug: 0x2a8f8a },
+  econ: { wall: 0xf6efd9, trim: 0xb8862b, rug: 0x7a5a2a },
+};
+
+export function createRooms(): Record<InteriorKind, RoomInterior> {
+  const out: Record<InteriorKind, RoomInterior> = { ...buildClubhouse(), canteen: buildCanteen() };
+  // one classroom interior per department and room kind that has a course in it (plus the exam hall)
+  const combos = new Set<string>(['main:lecture']);
+  for (const c of Object.values(COURSES)) combos.add(`${c.building}:${c.kind}`);
+  [...combos].sort().forEach((combo, i) => {
+    const [b, kind] = combo.split(':') as [ClassBuilding, RoomKind];
+    const key = classKey(b, kind);
+    out[key] = build(kind, key, [-75 + 50 * i, 325], THEMES[b]);
+  });
+  // and a corridor floor (ground, middle and top) for each department building
+  DEPT_IDS.forEach((b, bi) => {
+    (['ground', 'mid', 'top'] as const).forEach((v, vi) => {
+      out[floorKey(b, v)] = buildFloor(b, v, [-75 + 60 * (bi * 3 + vi), 400]);
+    });
+  });
+  return out;
 }
 
-function build(kind: RoomKind): RoomInterior {
-  const { w, d, at } = CFG[kind];
+function build(
+  kind: RoomKind,
+  key: InteriorKind,
+  at: [number, number],
+  theme: Partial<typeof BASE>,
+): RoomInterior {
+  const C = { ...BASE, ...theme };
+  const { w, d } = CFG[kind];
   const [ox, oz] = at;
   const B = new Batch();
   const colliders: Collider[] = [];
@@ -315,7 +416,7 @@ function build(kind: RoomKind): RoomInterior {
   group.visible = false;
 
   return {
-    kind,
+    kind: key,
     group,
     colliders,
     bounds: { x0: ox - w / 2 + 0.6, x1: ox + w / 2 - 0.6, z0: oz - d / 2 + 0.6, z1: oz + d / 2 - 0.5 },

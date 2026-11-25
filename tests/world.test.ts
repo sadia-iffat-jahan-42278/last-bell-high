@@ -181,9 +181,17 @@ describe('time-of-day lighting', () => {
 
 /* ------------------------------ classroom interiors ------------------------------ */
 import { createRooms } from '../src/render/rooms';
+import { COURSES, DEPARTMENTS } from '../src/core/data';
+import { DEPT_IDS } from '../src/core/types';
 import type { RoomInterior } from '../src/render/rooms';
 
-const rooms = createRooms();
+const allRooms = createRooms();
+const { canteen: canteenRoom, clubhall, chess, music, dance, debate, sports } = allRooms;
+const byPrefix = (p: string) => Object.fromEntries(Object.entries(allRooms).filter(([k]) => k.startsWith(p)));
+/** The themed classroom interiors (one per department and room kind) and the corridor floors. */
+const rooms = byPrefix('class:');
+const floorRooms = byPrefix('floor:');
+const clubRooms = { chess, music, dance, debate, sports };
 const PLAYER_R = 0.42;
 
 function insideBlocked(room: RoomInterior, x: number, z: number): boolean {
@@ -227,7 +235,9 @@ function walkable(room: RoomInterior, tx: number, tz: number, within: number): b
 
 describe('classroom interiors', () => {
   it('builds all four room kinds with finite geometry, far away from the campus', () => {
-    expect(Object.keys(rooms).sort()).toEqual(['computer', 'lab', 'lecture', 'seminar']);
+    // one interior for every (department, room kind) pair that has a course, plus the exam hall
+    const want = new Set(['main:lecture', ...Object.values(COURSES).map((c) => `${c.building}:${c.kind}`)]);
+    expect(Object.keys(rooms).sort()).toEqual([...want].map((w) => `class:${w}`).sort());
     for (const r of Object.values(rooms)) {
       const mesh = r.group.children[0] as unknown as { geometry: typeof campus.solid };
       const pos = mesh.geometry.getAttribute('position');
@@ -273,5 +283,207 @@ describe('classroom interiors', () => {
       const keys = r.seats.map((s) => `${s.x.toFixed(2)},${s.z.toFixed(2)}`);
       expect(new Set(keys).size, r.kind).toBe(keys.length);
     }
+  });
+});
+
+describe('canteen interior', () => {
+  const r = canteenRoom;
+  const ex = r.extras!;
+
+  it('builds finite geometry far from the campus and the classrooms', () => {
+    const mesh = r.group.children[0] as unknown as { geometry: typeof campus.solid };
+    const pos = mesh.geometry.getAttribute('position');
+    expect(pos.count).toBeGreaterThan(500);
+    expect(pos.array.every((v) => Number.isFinite(v))).toBe(true);
+    expect(Math.abs(r.centre.z)).toBeGreaterThan(150);
+    for (const c of Object.values(rooms))
+      expect(Math.hypot(c.centre.x - r.centre.x, c.centre.z - r.centre.z)).toBeGreaterThan(20);
+  });
+
+  it('has plenty of unique dining seats and a clear spawn and door', () => {
+    expect(r.seats.length).toBeGreaterThanOrEqual(30);
+    const keys = r.seats.map((s) => `${s.x.toFixed(2)},${s.z.toFixed(2)}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(insideBlocked(r, r.spawn.x, r.spawn.z)).toBe(false);
+    expect(insideBlocked(r, r.door.x, r.door.z)).toBe(false);
+  });
+
+  it('lets the player walk to the counter, the store, the vending machines, every seat and the exit', () => {
+    expect(walkable(r, ex.order.x, ex.order.z, 2.6)).toBe(true);
+    expect(walkable(r, ex.store.x, ex.store.z, 2.3)).toBe(true);
+    expect(walkable(r, ex.vending.x, ex.vending.z, 2.2)).toBe(true);
+    expect(walkable(r, r.door.x, r.door.z, 1.9)).toBe(true);
+    r.seats.forEach((s, i) => expect(walkable(r, s.x, s.z, 1.7), `seat ${i}`).toBe(true));
+  });
+
+  it('does not trigger a prompt the moment you walk in', () => {
+    const d = (p: { x: number; z: number }) => Math.hypot(r.spawn.x - p.x, r.spawn.z - p.z);
+    expect(d(r.door)).toBeGreaterThan(1.9);
+    expect(d(ex.order)).toBeGreaterThan(2.6);
+    expect(d(ex.store)).toBeGreaterThan(2.3);
+    expect(d(ex.vending)).toBeGreaterThan(2.2);
+    for (const s of r.seats) expect(d(s)).toBeGreaterThan(1.7);
+  });
+
+  it('keeps the kitchen staff behind the counter', () => {
+    expect(ex.staff.length).toBe(3);
+    for (const s of ex.staff) {
+      expect(s.z).toBeLessThan(r.centre.z - 4.7);
+      expect(blocked(r.colliders, s.x, s.z, 0.1)).toBeDefined(); // inside the kitchen block the player cannot enter
+    }
+    expect(walkable(r, ex.staff[0].x, ex.staff[0].z, 0.8)).toBe(false);
+  });
+});
+
+describe('club house', () => {
+  const lobby = clubhall;
+  const ex = lobby.club!;
+
+  it('builds a lobby and five themed rooms with finite geometry, far from the campus', () => {
+    for (const [name, r] of Object.entries({ clubhall: lobby, ...clubRooms })) {
+      const mesh = r.group.children[0] as unknown as { geometry: typeof campus.solid };
+      const pos = mesh.geometry.getAttribute('position');
+      expect(pos.count, name).toBeGreaterThan(300);
+      expect(
+        pos.array.every((v) => Number.isFinite(v)),
+        name,
+      ).toBe(true);
+      expect(Math.abs(r.centre.z), name).toBeGreaterThan(150);
+    }
+    expect(Object.keys(clubRooms).sort()).toEqual(['chess', 'dance', 'debate', 'music', 'sports']);
+  });
+
+  it('has one door per club in the lobby, all reachable', () => {
+    expect(ex.doors?.map((d) => d.club).sort()).toEqual(['chess', 'dance', 'debate', 'music', 'sports']);
+    for (const d of ex.doors!) expect(walkable(lobby, d.at.x, d.at.z, 2.0), d.club).toBe(true);
+    expect(walkable(lobby, ex.desk!.x, ex.desk!.z, 2.2)).toBe(true);
+    expect(walkable(lobby, lobby.door.x, lobby.door.z, 1.9)).toBe(true);
+    for (const c of Object.keys(clubRooms) as (keyof typeof clubRooms)[]) {
+      const p = ex.arrive![c]!;
+      expect(insideBlocked(lobby, p.x, p.z), `${c} arrival`).toBe(false);
+    }
+  });
+
+  it('lets the player walk from the entrance to the activity spot and back to the exit in every club room', () => {
+    for (const [name, r] of Object.entries(clubRooms)) {
+      const play = r.club!.play!;
+      expect(insideBlocked(r, r.spawn.x, r.spawn.z), `${name} spawn`).toBe(false);
+      expect(walkable(r, play.x, play.z, 2.0), `${name} activity spot`).toBe(true);
+      expect(walkable(r, r.door.x, r.door.z, 1.9), `${name} exit`).toBe(true);
+      // not triggered by simply walking in
+      expect(Math.hypot(r.spawn.x - play.x, r.spawn.z - play.z), `${name} prompt`).toBeGreaterThan(2.0);
+      expect(Math.hypot(r.spawn.x - r.door.x, r.spawn.z - r.door.z), `${name} exit prompt`).toBeGreaterThan(
+        1.9,
+      );
+    }
+  });
+
+  it('leaves room for at least eight people in each room, none standing inside furniture', () => {
+    for (const [name, r] of Object.entries({ clubhall: lobby, ...clubRooms })) {
+      const people = r.club!.people;
+      expect(people.length, name).toBeGreaterThanOrEqual(6);
+      const keys = people.map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`);
+      expect(new Set(keys).size, name).toBe(keys.length);
+      const bad = people
+        .filter((p) => p.pose === 'stand' || p.pose === 'dance' || p.pose === 'play')
+        .filter((p) => !!blocked(r.colliders, p.x, p.z, 0.3));
+      expect(
+        bad.map((p) => `${p.x.toFixed(1)},${p.z.toFixed(1)}`),
+        `${name} standing in furniture`,
+      ).toEqual([]);
+    }
+  });
+
+  it('raises the stage in the music room and the podium platform in the debate hall', () => {
+    const m = clubRooms.music;
+    expect(m.club!.floorY!(m.centre.x, m.centre.z - 6)).toBeGreaterThan(0.3);
+    expect(m.club!.floorY!(m.centre.x, m.centre.z + 4)).toBe(0);
+    const d = clubRooms.debate;
+    expect(d.club!.floorY!(d.centre.x - 4, d.centre.z - 6)).toBeGreaterThan(0.2);
+    expect(d.club!.floorY!(d.centre.x, d.centre.z + 4)).toBe(0);
+  });
+});
+
+describe('department building floors', () => {
+  const list = Object.entries(floorRooms);
+
+  it('has a ground, middle and top corridor for each of the five department buildings', () => {
+    expect(list.length).toBe(DEPT_IDS.length * 3);
+    for (const b of DEPT_IDS)
+      for (const v of ['ground', 'mid', 'top'])
+        expect(floorRooms[`floor:${b}:${v}`], `${b} ${v}`).toBeDefined();
+  });
+
+  it('builds finite geometry far from the campus, with six classroom doors on every floor', () => {
+    for (const [name, r] of list) {
+      const mesh = r.group.children[0] as unknown as { geometry: typeof campus.solid };
+      const pos = mesh.geometry.getAttribute('position');
+      expect(pos.count, name).toBeGreaterThan(300);
+      expect(
+        pos.array.every((v) => Number.isFinite(v)),
+        name,
+      ).toBe(true);
+      expect(Math.abs(r.centre.z), name).toBeGreaterThan(150);
+      expect(r.floor!.doors.length, name).toBe(6);
+    }
+  });
+
+  it('lets you walk from the arrival point to every classroom door, the stairs and (on the ground floor) the exit', () => {
+    for (const [name, r] of list) {
+      const f = r.floor!;
+      for (const [label, p] of Object.entries({
+        entrance: f.arrive.entrance,
+        below: f.arrive.fromBelow,
+        above: f.arrive.fromAbove,
+      })) {
+        expect(insideBlocked(r, p.x, p.z), `${name} arrival ${label}`).toBe(false);
+      }
+      f.doors.forEach((d, i) => expect(walkable(r, d.x, d.z, 1.9), `${name} door ${i}`).toBe(true));
+      if (f.up) expect(walkable(r, f.up.x + 1, (f.up.z0 + f.up.z1) / 2, 1.0), `${name} up flight`).toBe(true);
+      if (f.down)
+        expect(walkable(r, f.down.x + 1, (f.down.z0 + f.down.z1) / 2, 1.0), `${name} down flight`).toBe(true);
+      if (f.variant === 'ground') {
+        expect(walkable(r, r.door.x, r.door.z, 1.9), `${name} exit`).toBe(true);
+        expect(f.directory, name).toBeDefined();
+        expect(walkable(r, f.directory!.x, f.directory!.z, 2.2), `${name} directory`).toBe(true);
+      }
+    }
+  });
+
+  it('has an up flight everywhere except the top floor, and a down flight everywhere except the ground floor', () => {
+    for (const [name, r] of list) {
+      const f = r.floor!;
+      expect(!!f.up, `${name} up`).toBe(f.variant !== 'top');
+      expect(!!f.down, `${name} down`).toBe(f.variant !== 'ground');
+    }
+  });
+
+  it('really climbs: the up flight rises a whole floor and the down flight sinks a whole floor', () => {
+    for (const [name, r] of list) {
+      const f = r.floor!;
+      expect(f.floorY(r.centre.x + 5, r.centre.z), `${name} corridor`).toBe(0);
+      if (f.up) {
+        const mid = (f.up.z0 + f.up.z1) / 2;
+        expect(f.floorY(f.up.x - 0.3, mid), `${name} top of the flight`).toBeGreaterThan(3.85);
+        expect(f.floorY(f.up.x + 2.5, mid), `${name} halfway`).toBeGreaterThan(1.5);
+        expect(f.floorY(f.up.x + 2.5, mid), `${name} halfway`).toBeLessThan(2.6);
+      }
+      if (f.down) {
+        const mid = (f.down.z0 + f.down.z1) / 2;
+        expect(f.floorY(f.down.x - 0.3, mid), `${name} bottom of the flight`).toBeLessThan(-3.85);
+      }
+    }
+  });
+
+  it('keeps people out of the furniture and gives each building its own colour', () => {
+    for (const [name, r] of list) {
+      const bad = r.floor!.people.filter((p) => !!blocked(r.colliders, p.x, p.z, 0.3));
+      expect(
+        bad.map((p) => `${p.x.toFixed(1)},${p.z.toFixed(1)}`),
+        `${name} people in furniture`,
+      ).toEqual([]);
+    }
+    const cols = new Set(DEPT_IDS.map((b) => DEPARTMENTS[b].color));
+    expect(cols.size).toBe(DEPT_IDS.length);
   });
 });

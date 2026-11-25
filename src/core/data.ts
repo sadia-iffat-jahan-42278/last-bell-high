@@ -7,6 +7,7 @@ import type {
   EventId,
   ItemId,
   LetterGrade,
+  NpcId,
   PerkId,
   QuestId,
   StatId,
@@ -166,7 +167,7 @@ export const PERKS: Record<PerkId, { name: string; icon: string; desc: string }>
   coupon: { name: 'Coupon Clipper', icon: '🏷️', desc: 'Shop prices are 20% lower.' },
   iron: { name: 'Iron Lungs', icon: '🫁', desc: 'Activities cost 25% less energy.' },
   pitch: { name: 'Perfect Pitch', icon: '🎼', desc: 'Rhythm timing windows are 15% wider.' },
-  eureka: { name: 'Eureka!', icon: '💡', desc: 'Science club gives an extra replay and a second chance.' },
+  spotlight: { name: 'Spotlight', icon: '🌟', desc: 'All club rewards are 20% bigger.' },
   hint: {
     name: 'Hint Hawk',
     icon: '🦅',
@@ -213,7 +214,9 @@ export const ACHIEVEMENTS: { id: AchievementId; icon: string; name: string; desc
   { id: 'boss', icon: '🗡️', name: 'Exam Slayer', desc: 'Defeat a finals boss.' },
   { id: 'rhythmS', icon: '🎵', name: 'Perfect Pitch', desc: 'Earn an S rank at Music Club.' },
   { id: 'dodge', icon: '🏀', name: 'Untouchable', desc: 'Finish Dodgeball Drill without losing a life.' },
-  { id: 'eureka', icon: '🧪', name: 'Eureka!', desc: 'Complete 7 rounds in Science Club.' },
+  { id: 'chessAce', icon: '♟️', name: 'Checkmate!', desc: 'Solve every puzzle in a Chess Club session.' },
+  { id: 'danceS', icon: '💃', name: 'Show Stopper', desc: 'Earn an S rank at Dance Club.' },
+  { id: 'debateS', icon: '🎤', name: 'Silver Tongue', desc: 'Earn an S rank at Debate Club.' },
   { id: 'caught', icon: '🚨', name: 'Busted', desc: 'Get caught cheating or skipping class.' },
   { id: 'rebel', icon: '😎', name: 'Rebel Genius', desc: 'Cheat successfully and still ace the test.' },
   { id: 'rank1', icon: '🥇', name: 'Top of the Class', desc: 'Reach rank 1 on a semester transcript.' },
@@ -242,36 +245,90 @@ export const EVENT_POOL: EventDef[] = [
 export interface Club {
   name: string;
   icon: string;
+  /** Name of the practice activity. */
   game: string;
-  building: string;
+  /** What the club does, shown at registration and in the journal. */
+  blurb: string;
+  /** The room inside the Club House. */
+  room: string;
+  /** Main and secondary stat trained by the club. */
   stat: StatId;
+  stat2: StatId;
   color: string;
 }
+/** Students must join one or two of these each semester, never more. */
+export const CLUB_MAX = 2;
 export const CLUBS: Record<ClubId, Club> = {
-  sports: {
-    name: 'Sports Club',
-    icon: '🏀',
-    game: 'Dodgeball Drill',
-    building: 'gym',
-    stat: 'sta',
-    color: '#ff7a59',
+  chess: {
+    name: 'Chess Club',
+    icon: '♟️',
+    game: 'Chess Puzzles',
+    blurb: 'Solve tactics puzzles on real boards: mates, forks and winning captures.',
+    room: 'Chess Room',
+    stat: 'int',
+    stat2: 'foc',
+    color: '#5b6577',
   },
   music: {
     name: 'Music Club',
     icon: '🎵',
     game: 'Rhythm Rehearsal',
-    building: 'music',
+    blurb: 'Rehearse on stage with a full band: hit the falling notes in time.',
+    room: 'Music Room',
     stat: 'cre',
+    stat2: 'foc',
     color: '#9b59d6',
   },
-  science: {
-    name: 'Science Club',
-    icon: '🧪',
-    game: 'Lab Sequence',
-    building: 'lab',
-    stat: 'cre',
-    color: '#1aa6a6',
+  dance: {
+    name: 'Dance Club',
+    icon: '💃',
+    game: 'Dance Battle',
+    blurb: 'Follow the choreography in the mirrored studio: arrows on the beat.',
+    room: 'Dance Studio',
+    stat: 'sta',
+    stat2: 'cha',
+    color: '#ff5fa2',
   },
+  debate: {
+    name: 'Debate Club',
+    icon: '🎤',
+    game: 'Debate Round',
+    blurb: 'Spot the logical flaw in your opponent’s argument before the judges decide.',
+    room: 'Debate Hall',
+    stat: 'cha',
+    stat2: 'int',
+    color: '#3d7be0',
+  },
+  sports: {
+    name: 'Sports Club',
+    icon: '🏀',
+    game: 'Dodgeball Drill',
+    blurb: 'Train on the indoor court: dodge, grab stars and keep your lives.',
+    room: 'Sports Hall',
+    stat: 'sta',
+    stat2: 'foc',
+    color: '#ff7a59',
+  },
+};
+
+/** Which club each of the sixteen students belongs to (they are found in its room after class). */
+export const NPC_CLUB: Record<NpcId, ClubId> = {
+  rin: 'chess',
+  iris: 'chess',
+  theo: 'chess',
+  zoe: 'music',
+  lina: 'music',
+  sam: 'music',
+  diego: 'dance',
+  tessa: 'dance',
+  maya: 'dance',
+  ava: 'debate',
+  marcus: 'debate',
+  jack: 'debate',
+  kai: 'sports',
+  felix: 'sports',
+  yuki: 'sports',
+  nora: 'sports',
 };
 
 /** Colours locked until bought: palette index -> price. */

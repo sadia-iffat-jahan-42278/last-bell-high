@@ -1,9 +1,9 @@
 // Quiz engine: class work, tests, study sessions, pop quizzes and the finals boss fight.
 import { Sound } from '../audio/sound';
-import { SUBJECTS, type Boss } from '../core/data';
-import { makeQuestion } from '../core/questions';
+import { COURSES, SUBJECTS, type Boss } from '../core/data';
+import { courseQuestion, makeQuestion } from '../core/questions';
 import * as St from '../core/state';
-import type { GameState, ItemId, Question, SubjectId } from '../core/types';
+import type { CourseId, GameState, ItemId, Question, SubjectId } from '../core/types';
 import { clamp, mulberry32, sleep } from '../core/util';
 import { $, el, esc } from '../ui/dom';
 import { ui } from '../ui/ui';
@@ -15,10 +15,17 @@ export interface QuizConfig {
   state: GameState;
   /** Subject for single-subject quizzes. */
   subject?: SubjectId;
+  /** Ask only about this course (lectures and midterms). */
+  course?: CourseId;
+  /** Courses to draw from: a study session (any course in the area) or the finals (every course of the semester). */
+  pool?: CourseId[];
+  /** Difficulty (1..4.4) to use for each course in `pool`; `tier` is used for any course not listed. */
+  levels?: Record<CourseId, number>;
   count?: number;
   /** Finals: one phase per subject. */
   phases?: SubjectId[];
   perPhase?: number;
+  /** Difficulty: a fractional level between 1 (first-week) and 4.4 (hardest). */
   tier: number;
   title: string;
   items: ItemId[];
@@ -241,14 +248,22 @@ export async function runQuiz(cfg: QuizConfig): Promise<QuizResult> {
     }
     phaseLeft--;
 
-    const q = (curQ = makeQuestion(subj, cfg.tier, rng, used));
+    // Questions come from the course being taught, at a difficulty that grows with the semester,
+    // and skip anything the student has already been asked.
+    const candidates = cfg.course
+      ? [cfg.course]
+      : (cfg.pool ?? []).filter((id) => !isFinal || COURSES[id]?.area === subj);
+    const cid = candidates.length ? candidates[Math.floor(rng() * candidates.length)] : undefined;
+    const q = (curQ = cid
+      ? courseQuestion(cid, cfg.levels?.[cid] ?? cfg.tier, rng, (s.seenQ[cid] ??= []), used)
+      : makeQuestion(subj, cfg.tier, rng, used));
     limit =
       (BASE_TIME[kind] +
         St.timeBonus(s, subj) +
         (items.has('tea') ? 5 : 0) +
         ((kind === 'test' || isFinal) && St.friendHas(s, 'rin', 2) ? 3 : 0)) *
       St.fatigueMult(s);
-    q$('q-subj').textContent = `${SB.icon} ${SB.name}`;
+    q$('q-subj').textContent = `${SB.icon} ${cid ? COURSES[cid].name : SB.name}`;
     q$('q-subj').style.setProperty('--c', SB.color);
     q$('q-text').textContent = q.q;
     const opts = q$('q-opts');

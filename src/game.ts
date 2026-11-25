@@ -3,15 +3,20 @@ import { Sound } from './audio/sound';
 import {
   ACHIEVEMENTS,
   CLUBS,
+  BUILDING_LABEL,
+  CLUB_MAX,
   COURSES,
+  DEPARTMENTS,
   DAYS_PER_TERM,
   EVENING_PERIOD,
   EXAM_HALL,
+  FLOORS,
   FINALS,
   GRADES,
   ITEMS,
   LAST_PERIOD,
   NPCS,
+  NPC_CLUB,
   PERIODS,
   PERKS,
   PROFESSOR_COMMENTS,
@@ -22,12 +27,15 @@ import {
   SUBJECT_IDS,
   WEEKDAYS,
   YEAR_NAMES,
+  courseInRoom,
   gradeOf,
   xpForLevel,
   type Course,
 } from './core/data';
 import * as St from './core/state';
 import {
+  CLUB_IDS,
+  DEPT_IDS,
   NPC_IDS,
   type ClassBuilding,
   type ClubId,
@@ -46,23 +54,28 @@ import {
   type ZoneId,
 } from './core/types';
 import { clamp, hashStr, mulberry32, sleep } from './core/util';
+import { runChess, type ChessResult } from './minigames/chess';
+import { runDance, type DanceResult } from './minigames/dance';
+import { runDebate, type DebateResult } from './minigames/debate';
 import { runDodge, type DodgeResult } from './minigames/dodge';
-import { runLab, type LabResult } from './minigames/lab';
 import { runQuiz, type QuizKind, type QuizResult } from './minigames/quiz';
 import { runRhythm, type RhythmResult } from './minigames/rhythm';
 import type { Rank } from './minigames/shared';
 import { esc } from './ui/dom';
 import type { HudInfo } from './ui/hud';
 import { hud } from './ui/hud';
-import { ui, type ChoiceOption } from './ui/ui';
+import { ui } from './ui/ui';
 import { STARS } from './world/layout';
 
 /** Describes a classroom the player can walk into. */
 export interface RoomSpec {
   kind: RoomKind;
   building: ClassBuilding;
-  /** Room label such as `LH-101`. */
+  /** Room label such as `MTH-203`. */
   room: string;
+  /** Which floor of the department building, and which classroom door on it. */
+  floor: number;
+  slot: number;
   /** Shown while fading in, e.g. "Lecture Hall LH-101". */
   title: string;
   /** The course (or exam) held here. */
@@ -72,8 +85,57 @@ export interface RoomSpec {
   seed: number;
 }
 
+/** Describes the canteen interior the player can walk into. */
+export interface CanteenSpec {
+  kind: 'canteen';
+  building: 'canteen';
+  title: string;
+  sub: string;
+  seed: number;
+  /** Friends having a meal in there right now (they sit at the tables and can be talked to). */
+  guests: NpcId[];
+  /** Hot meals are being served (lunch or a free period); otherwise only the store and vending machines. */
+  mealtime: boolean;
+}
+
+/** Describes the Club House lobby or one of its five club rooms. */
+export interface ClubSpec {
+  kind: 'clubhall' | ClubId;
+  building: 'club';
+  title: string;
+  sub: string;
+  seed: number;
+  /** Friends in the room right now. */
+  guests: NpcId[];
+  /** Lobby only: you just came out of this club's room. */
+  from?: ClubId;
+}
+
+/** A corridor floor of a department building. */
+export interface FloorSpec {
+  kind: 'floor';
+  building: ClassBuilding;
+  floor: number;
+  title: string;
+  sub: string;
+  seed: number;
+  /** Friends in the corridor right now. */
+  guests: NpcId[];
+  /** Where the player appears: through the entrance, up or down the stairs, or out of classroom door n. */
+  arrive: 'entrance' | 'up' | 'down' | { door: number };
+}
+
 /** What the 3D scene exposes to the rules layer. */
 export interface SceneHooks {
+  enterFloor(spec: FloorSpec): void;
+  enterClub(spec: ClubSpec): void;
+  /** Stand (or sit) at the club room's activity spot while the activity runs. */
+  takePlace(): void;
+  enterCanteen(spec: CanteenSpec): void;
+  /** Show (colour) or hide (null) the meal tray the player carries. */
+  setTray(colour: number | null): void;
+  /** Sit at dining seat `index` (seated pose); returns the friends sitting close enough to eat with. */
+  sitAt(index: number): NpcId[];
   setPeriod(period: number, instant?: boolean): void;
   setWeather(w: Weather): void;
   teleportToStart(): void;
@@ -86,6 +148,12 @@ export interface SceneHooks {
   sitDown(): void;
 }
 const noopScene: SceneHooks = {
+  enterFloor() {},
+  enterClub() {},
+  takePlace() {},
+  enterCanteen() {},
+  setTray() {},
+  sitAt: () => [],
   setPeriod() {},
   setWeather() {},
   teleportToStart() {},
@@ -121,7 +189,9 @@ const dayLabel = (s: GameState): string => {
   return `Sem ${St.term(s) + 1} · Yr ${St.yearOf(s)} · ${wd} · Day ${s.day + 1}/${St.TOTAL_DAYS}`;
 };
 const WEATHER: Record<Weather, string> = { sunny: '☀️ Sunny', cloudy: '☁️ Cloudy', rain: '🌧️ Rainy' };
-const BUILDING_NAME: Record<ClassBuilding, string> = { main: 'Hale Hall', lab: 'Science Labs' };
+const BUILDING_NAME = BUILDING_LABEL;
+export const floorWord = (n: number): string =>
+  ['', 'ground floor', '2nd floor', '3rd floor', '4th floor', '5th floor'][n] ?? `floor ${n}`;
 const courseLabel = (c: Course): string => `${SUBJECTS[c.area].icon} ${c.name}`;
 
 /** The classroom for this period's lecture, midterm or finals, or null when nothing is scheduled. */
@@ -133,6 +203,8 @@ export function classroomSpec(s: GameState): RoomSpec | null {
       kind: EXAM_HALL.kind,
       building: EXAM_HALL.building,
       room: EXAM_HALL.room,
+      floor: EXAM_HALL.floor,
+      slot: EXAM_HALL.slot,
       title: EXAM_HALL.name,
       sub: `${F.emoji} ${F.name}`,
       prof: F.name,
@@ -146,6 +218,8 @@ export function classroomSpec(s: GameState): RoomSpec | null {
     kind: c.kind,
     building: c.building,
     room: c.room,
+    floor: c.floor,
+    slot: c.slot,
     title: `${ROOM_KIND_NAME[c.kind]} ${c.room}`,
     sub: `${courseLabel(c)} · ${c.code}`,
     prof: c.prof,
@@ -158,17 +232,17 @@ export function objective(s: GameState): string {
   const spec = classroomSpec(s);
   switch (k) {
     case 'class':
-      return `📘 ${COURSES[St.classCourse(s) as CourseId].name}: ${spec?.room} (${BUILDING_NAME[spec?.building ?? 'main']})`;
+      return `📘 ${COURSES[St.classCourse(s) as CourseId].name}: ${spec?.room} (${BUILDING_NAME[spec?.building ?? 'main']}, ${floorWord(spec?.floor ?? 1)})`;
     case 'test':
-      return `📝 Midterm: ${COURSES[St.classCourse(s) as CourseId].name} (${spec?.room}, ${BUILDING_NAME[spec?.building ?? 'main']})`;
+      return `📝 Midterm: ${COURSES[St.classCourse(s) as CourseId].name} (${spec?.room}, ${BUILDING_NAME[spec?.building ?? 'main']}, ${floorWord(spec?.floor ?? 1)})`;
     case 'final':
-      return '⚔️ Finals! Report to the Grand Exam Hall (Hale Hall)';
+      return '⚔️ Finals! Report to the Grand Exam Hall (Hale Hall, ground floor)';
     case 'lunch':
       return '🍱 Lunch: eat at the Canteen, or relax';
     case 'after':
-      return '🎒 After class: clubs, study, friends…';
+      return '🎒 After class: Club House, study, friends…';
     case 'showcase':
-      return '🎤 Club Showcase today! Pick a club';
+      return '🎤 Club Showcase today! Perform at the Club House';
     case 'free':
       return '🎉 Free period! Use it wisely';
     default:
@@ -181,6 +255,8 @@ export function objectiveTarget(s: GameState): ZoneId | null {
   const k = St.periodKind(s);
   if (k === 'class' || k === 'test') return COURSES[St.classCourse(s) as CourseId].building;
   if (k === 'final') return 'main';
+  if (k === 'lunch') return 'canteen';
+  if (k === 'showcase') return 'club';
   if (k === 'evening') return 'gate';
   return null;
 }
@@ -208,12 +284,36 @@ export function hudInfo(): HudInfo {
 export function refreshHud(): void {
   if (game.s) hud.update(hudInfo());
 }
-/** Question tier for a course: its own level, a notch harder late in the semester. */
-const courseTier = (s: GameState, c: Course, bonus = 0): number =>
-  clamp(c.tier + (St.dayInTerm(s) >= 5 ? 1 : 0) + bonus, 1, 4);
-/** Tier for study sessions not tied to a course: grows with the academic year. */
-const studyTier = (s: GameState, bonus = 0): number =>
-  clamp(St.yearOf(s) + (St.dayInTerm(s) >= 4 ? 1 : 0) + bonus - 1, 1, 4);
+/**
+ * How hard the questions for a course are right now, from 1 (first-week) to 4.4 (hardest). Three things raise it:
+ * a harder course, a later day in the semester, and a later semester in the degree.
+ */
+export const courseLevel = St.courseLevel;
+
+/**
+ * The courses a library or late-night study session can draw questions from for `area`: this semester's courses
+ * count triple, and courses from earlier semesters come back as (slightly easier) review.
+ */
+function studyCourses(
+  s: GameState,
+  area: SubjectId,
+  bonus = 0,
+): { pool: CourseId[]; levels: Record<CourseId, number> } {
+  const now = new Set(St.courses(s));
+  const pool: CourseId[] = [];
+  const levels: Record<CourseId, number> = {};
+  for (const c of Object.values(COURSES)) {
+    if (c.area !== area || c.sem > St.term(s)) continue;
+    if (now.has(c.id)) {
+      levels[c.id] = courseLevel(s, c, bonus);
+      pool.push(c.id, c.id, c.id);
+    } else {
+      levels[c.id] = clamp(0.6 * c.tier + 1.0 + bonus, 1, 4.4);
+      pool.push(c.id);
+    }
+  }
+  return { pool, levels };
+}
 const nameSeed = (s: GameState): number => hashStr(s.name) & 0xffff;
 
 /* ============================== rewards ============================== */
@@ -462,23 +562,184 @@ interface LessonOpts {
   count?: number;
   title?: string;
   items?: ItemId[];
+  /** Difficulty level (1..4.4). */
   tier?: number;
   seedAdd?: number;
+  /** Ask only about this course. */
+  course?: CourseId;
+  /** Or draw from several courses, each at its own level. */
+  pool?: CourseId[];
+  levels?: Record<CourseId, number>;
 }
 function runLesson(kind: QuizKind, subj: SubjectId, opts: LessonOpts): Promise<QuizResult> {
   const s = S();
-  const { count = 5, title, items = [], tier, seedAdd = 0 } = opts;
+  const { count = 5, title, items = [], tier = 2, seedAdd = 0, course, pool, levels } = opts;
   const SB = SUBJECTS[subj];
   return runQuiz({
     kind,
     state: s,
     subject: subj,
+    course,
+    pool,
+    levels,
     count,
-    tier: tier ?? studyTier(s, kind === 'test' ? 1 : 0),
+    tier,
     title: title ?? `${SB.icon} ${SB.name}`,
     items,
     seed: s.day * 1009 + s.period * 31 + seedAdd + nameSeed(s),
   });
+}
+
+/* ---------- department buildings: lobby, corridors, stairs, then the classroom ---------- */
+/** Where the player is inside a department building (null when outdoors or in another interior). */
+let where: { building: ClassBuilding; floor: number } | null = null;
+/** The classroom the player is standing in, so leaving it can return to its corridor. */
+let lastRoom: RoomSpec | null = null;
+
+function floorSpec(
+  s: GameState,
+  building: ClassBuilding,
+  floor: number,
+  arrive: FloorSpec['arrive'],
+): FloorSpec {
+  const D = DEPARTMENTS[building];
+  const k = St.periodKind(s);
+  const seed = s.day * 71 + s.period * 11 + floor * 5 + building.length;
+  const rng = mulberry32(seed);
+  const around =
+    St.isFreeKind(k) && s.period < EVENING_PERIOD ? NPC_IDS.filter((id) => St.npcPresent(s, id)) : [];
+  for (let i = around.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [around[i], around[j]] = [around[j], around[i]];
+  }
+  return {
+    kind: 'floor',
+    building,
+    floor,
+    title: `${D.icon} ${D.hall}`,
+    sub: `${D.school} · ${floorWord(floor)}`,
+    seed,
+    guests: around.slice(0, floor === 1 ? 2 : 1),
+    arrive,
+  };
+}
+
+async function showFloor(
+  building: ClassBuilding,
+  floor: number,
+  arrive: FloorSpec['arrive'],
+  title?: string,
+): Promise<void> {
+  const s = S();
+  const spec = floorSpec(s, building, floor, arrive);
+  where = { building, floor };
+  await ui.fade(true, title ?? spec.title, spec.sub);
+  game.scene.enterFloor(spec);
+  await sleep(arrive === 'up' || arrive === 'down' ? 120 : 250);
+  await ui.fade(false);
+}
+
+/** Walk in through a department building's front door, into its ground-floor lobby. */
+export async function enterBuilding(building: ClassBuilding): Promise<void> {
+  const s = S();
+  await showFloor(building, 1, 'entrance');
+  const spec = classroomSpec(s);
+  if (spec && spec.building === building)
+    ui.toast(
+      `🧭 Your room is ${spec.room} on the ${floorWord(spec.floor)}. Use the stairs on the left and look for the number on the door`,
+      'gold',
+      5200,
+    );
+  else
+    ui.toast(
+      '🪜 Stairs are at the far end of each corridor. Walk up and down them to change floor',
+      'gold',
+      4200,
+    );
+}
+
+/** The stairs: walking to the top of a flight takes you to the next floor, the bottom of one to the floor below. */
+export async function changeFloor(dir: 1 | -1): Promise<void> {
+  if (!where) return;
+  const target = where.floor + dir;
+  if (target < 1 || target > FLOORS) return;
+  const D = DEPARTMENTS[where.building];
+  Sound.sfx('whoosh');
+  await showFloor(
+    where.building,
+    target,
+    dir > 0 ? 'up' : 'down',
+    `${dir > 0 ? '⬆️' : '⬇️'} ${floorWord(target)}`,
+  );
+  ui.toast(`${D.hall}: ${floorWord(target)}`, 'good', 1800);
+}
+
+export async function leaveBuilding(): Promise<void> {
+  await ui.fade(true, '🚪 Leaving the building…');
+  where = null;
+  game.scene.exitRoom();
+  await sleep(150);
+  await ui.fade(false);
+}
+
+/** A list of every classroom in a building, floor by floor. */
+export async function showDirectory(building: ClassBuilding): Promise<void> {
+  const s = S();
+  const D = DEPARTMENTS[building];
+  const spec = classroomSpec(s);
+  const rows: string[] = [];
+  for (let f = FLOORS; f >= 1; f--) {
+    const rooms: string[] = [];
+    for (let slot = 0; slot < 6; slot++) {
+      const c = courseInRoom(building, f, slot);
+      if (c) rooms.push(`${c.room} ${SUBJECTS[c.area].icon} ${c.name}`);
+      else if (building === EXAM_HALL.building && f === EXAM_HALL.floor && slot === EXAM_HALL.slot)
+        rooms.push(`${EXAM_HALL.room} 🏛️ ${EXAM_HALL.name}`);
+    }
+    const mark = spec && spec.building === building && spec.floor === f ? ' ◀ your lecture' : '';
+    rows.push(`<b>${floorWord(f)}</b>${mark}<br>${rooms.join('<br>') || '<i>Staff rooms</i>'}`);
+  }
+  await ui.info(
+    `${D.icon} ${D.hall} directory`,
+    `<b>${D.school}</b> · first-year courses are on the low floors, final-year courses at the top.<br><br>${rows.join('<br><br>')}`,
+    'Thanks',
+  );
+}
+
+/** Things the player can use in a department building's corridor. */
+export function floorInteractions(
+  building: ClassBuilding,
+  floor: number,
+): { exit: Interaction; directory: Interaction; doors: Interaction[] } {
+  const s = S();
+  const spec = classroomSpec(s);
+  const doors: Interaction[] = [];
+  for (let slot = 0; slot < 6; slot++) {
+    const c = courseInRoom(building, floor, slot);
+    const exam = building === EXAM_HALL.building && floor === EXAM_HALL.floor && slot === EXAM_HALL.slot;
+    const mine = !!spec && spec.building === building && spec.floor === floor && spec.slot === slot;
+    const name = c ? `${c.room}: ${c.name}` : exam ? `${EXAM_HALL.room}: ${EXAM_HALL.name}` : 'Staff room';
+    doors.push({
+      label: mine ? `Enter ${name}` : `${name}`,
+      run: enterClassroom,
+      enabled: mine,
+      why: spec
+        ? `Your lecture is in ${spec.room}, ${BUILDING_NAME[spec.building]}, ${floorWord(spec.floor)}.`
+        : c
+          ? `${c.room} is locked: ${c.name} is not in session.`
+          : 'This door is locked.',
+    });
+  }
+  return {
+    exit: { label: `Leave ${DEPARTMENTS[building].hall}`, run: leaveBuilding, enabled: true, why: '' },
+    directory: {
+      label: 'Read the building directory',
+      run: () => showDirectory(building),
+      enabled: true,
+      why: '',
+    },
+    doors,
+  };
 }
 
 /** Walk through the classroom door: fade in to the interior. The lesson itself starts at the player's seat. */
@@ -486,6 +747,7 @@ export async function enterClassroom(): Promise<void> {
   const s = S();
   const spec = classroomSpec(s);
   if (!spec) return;
+  lastRoom = spec;
   await ui.fade(true, spec.title, spec.sub);
   game.scene.enterRoom(spec);
   await sleep(250);
@@ -493,8 +755,13 @@ export async function enterClassroom(): Promise<void> {
   ui.toast('💺 Find the glowing seat and press E to sit down', 'gold', 4200);
 }
 
-/** Leave the classroom without attending. */
+/** Leave the classroom without attending: back to the corridor you came from. */
 export async function leaveClassroom(): Promise<void> {
+  const room = lastRoom;
+  if (room) {
+    await showFloor(room.building, room.floor, { door: room.slot }, '🚪 Back to the corridor');
+    return;
+  }
   await ui.fade(true, '🚪 Leaving the room…');
   game.scene.exitRoom();
   await sleep(150);
@@ -569,7 +836,8 @@ export async function doClass(): Promise<void> {
   const R = await runLesson('class', subj, {
     count: 5,
     title: `${SUBJECTS[subj].icon} ${c.name}`,
-    tier: courseTier(s, c),
+    course: id,
+    tier: courseLevel(s, c),
   });
   St.recordScore(s, 'class', id, R.pct);
   s.totals.classes++;
@@ -592,7 +860,8 @@ export async function doTest(): Promise<void> {
     count: 8,
     title: `📝 ${c.name} Midterm`,
     items,
-    tier: courseTier(s, c, 1),
+    course: id,
+    tier: courseLevel(s, c, 0.5),
   });
   if (R.cheatUsed && R.caught) {
     s.caught++;
@@ -676,6 +945,9 @@ export async function doFinal(): Promise<void> {
     state: s,
     phases,
     perPhase: 5,
+    // every course of the semester is examined, each at its own (end-of-semester) difficulty
+    pool: St.courses(s),
+    levels: Object.fromEntries(St.courses(s).map((id) => [id, courseLevel(s, COURSES[id], 0.5)])),
     tier: clamp(2 + Math.floor(St.term(s) / 2), 2, 4),
     title: `${F.emoji} ${F.name}`,
     items,
@@ -724,7 +996,8 @@ export async function doLibrary(): Promise<void> {
   }
   const SB = SUBJECTS[subj];
   await ui.banner(`${SB.icon} Study session`, SB.name, 1100);
-  const R = await runLesson('study', subj, { count: 6, title: `📚 ${SB.name} Study`, tier: studyTier(s, 0) });
+  const { pool, levels } = studyCourses(s, subj);
+  const R = await runLesson('study', subj, { count: 6, title: `📚 ${SB.name} Study`, pool, levels });
   trackQuest('study');
   await gradedResult('study', subj, R, { title: 'Study session done' });
   await spendPeriod(BASE.study.energy, -4);
@@ -743,7 +1016,7 @@ async function doEveningStudy(): Promise<boolean> {
   const R = await runLesson('study', subj, {
     count: 6,
     title: `🌙 ${SB.name} Late Study`,
-    tier: studyTier(s, 1),
+    ...studyCourses(s, subj, 0.4),
   });
   await gradedResult('study', subj, R, { title: 'Late-night study', bonusMult: owl ? 1.5 : 1.15 });
   if (owl) St.addMastery(s, subj, 2.5);
@@ -794,38 +1067,93 @@ async function playClub(clubId: ClubId, cfg: Parameters<typeof runRhythm>[0]): P
       },
     };
   }
-  const R: LabResult = await runLab(cfg);
+  if (clubId === 'chess') {
+    const R: ChessResult = await runChess(cfg);
+    return {
+      rank: R.rank,
+      rows: [
+        ['Puzzles solved', `${R.solved} / ${R.total}`],
+        ['Best streak', `🔥 ${R.bestStreak}`],
+        ['Score', R.score],
+      ],
+      award: () => {
+        if (R.solved === R.total) s.flags.chessAce = true;
+      },
+    };
+  }
+  if (clubId === 'dance') {
+    const R: DanceResult = await runDance(cfg);
+    return {
+      rank: R.rank,
+      rows: [
+        ['Score', R.score.toLocaleString()],
+        ['Max combo', `🔥 ${R.maxCombo}`],
+        ['Accuracy', Math.round(R.acc * 100) + '%'],
+      ],
+      award: () => {
+        if (R.rank === 'S') s.flags.danceS = true;
+      },
+    };
+  }
+  const R: DebateResult = await runDebate(cfg);
   return {
     rank: R.rank,
     rows: [
-      ['Rounds cleared', `${R.rounds} / 8`],
-      ['Score', R.score],
-      ['Perfect rounds', R.perfectRounds],
+      ['Rounds won', `${R.won} / ${R.total}`],
+      ['Judges’ score', R.score],
+      ['Best streak', `🔥 ${R.bestStreak}`],
     ],
     award: () => {
-      if (R.rounds >= 7) s.flags.lab7 = true;
+      if (R.rank === 'S') s.flags.debateS = true;
     },
   };
 }
 
+/** Club sessions happen after class, on showcase day and in free periods, and never when you are tired or on hold. */
+function clubOpen(s: GameState): { ok: boolean; why: string } {
+  const k = St.periodKind(s);
+  const tired = s.energy < 15;
+  const time = k === 'after' || k === 'showcase' || k === 'free';
+  const ok = time && !s.detention && !tired;
+  const why = ok
+    ? ''
+    : s.detention
+      ? 'You are on a disciplinary hold today.'
+      : tired
+        ? 'Too tired for club. Eat or rest first.'
+        : k === 'class' || k === 'test' || k === 'final'
+          ? 'Class is in session!'
+          : k === 'lunch'
+            ? 'Club sessions start after class.'
+            : 'The Club House is closed for the evening.';
+  return { ok, why };
+}
+
+/** Run one club session in the club's room. */
 export async function doClub(clubId: ClubId): Promise<void> {
   const s = S();
   const C = CLUBS[clubId];
   const showcase = St.periodKind(s) === 'showcase';
   const t = St.term(s);
+  game.scene.takePlace();
   await ui.banner(`${C.icon} ${C.name}`, showcase ? '🎤 SHOWCASE DAY (×1.5 rewards)' : C.game, 1400);
   Sound.startMusic('tense');
   const run = await playClub(clubId, {
     state: s,
-    seed: s.day * 31 + clubId.length,
+    seed: s.day * 31 + clubId.length * 7 + nameSeed(s),
     hard: showcase,
-    // The club games were tuned for three difficulty steps; spread the 8 semesters over them.
+    // The older arcade games were tuned for three difficulty steps; spread the 8 semesters over them.
     term: Math.min(2, Math.floor(t / 3)),
+    sem: t,
     look: s.look,
   });
   Sound.startMusic('explore');
 
-  const m = RANK_MULT[run.rank] * (showcase ? 1.5 : 1) * (s.clubBoost ? 1.25 : 1);
+  const m =
+    RANK_MULT[run.rank] *
+    (showcase ? 1.5 : 1) *
+    (s.clubBoost ? 1.25 : 1) *
+    (St.has(s, 'spotlight') ? 1.2 : 1);
   s.clubBoost = false;
   const cl = s.clubs[clubId];
   const levelBefore = St.clubLevel(cl.xp);
@@ -836,10 +1164,11 @@ export async function doClub(clubId: ClubId): Promise<void> {
   St.addCoins(s, coins);
   cl.xp += clubXp;
   cl.best = Math.max(cl.best, RANK_INDEX.indexOf(run.rank));
-  const statGain = (clubId === 'sports' ? 0.5 : clubId === 'music' ? 0.45 : 0.35) * m;
+  const statGain = (clubId === 'sports' ? 0.5 : clubId === 'music' ? 0.45 : 0.4) * m;
   St.gainStat(s, C.stat, statGain);
-  if (clubId === 'science') St.gainStat(s, 'int', 0.2 * m);
+  St.gainStat(s, C.stat2, 0.2 * m);
   St.addStress(s, -10);
+  const attended = St.addSession(s, clubId);
   trackQuest('club');
   const chips: Chip[] = [
     { text: `✨ +${xr.n} XP`, cls: 'xp' },
@@ -852,7 +1181,7 @@ export async function doClub(clubId: ClubId): Promise<void> {
   if (St.clubLevel(cl.xp) > levelBefore)
     chips.push({ text: `🎉 Club level ${St.clubLevel(cl.xp)}!`, cls: 'xp' });
   run.award();
-  let note = '';
+  let note = `Session ${attended} of ${C.name} this semester.`;
   if (showcase) {
     const place = {
       S: '🥇 1st place!',
@@ -881,6 +1210,220 @@ export async function doClub(clubId: ClubId): Promise<void> {
     confetti: run.rank === 'S' || run.rank === 'A',
   });
   await spendPeriod(14, 0);
+}
+
+/* ---------- club registration: joining is mandatory, one or two clubs per semester ---------- */
+const COORDINATOR = 'Club Coordinator';
+
+/** The mandatory start-of-semester registration. You must join at least one club and may join at most two. */
+export async function clubRegistration(): Promise<void> {
+  const s = S();
+  if (!St.needsClubs(s)) return;
+  const t = St.term(s);
+  await ui.say([
+    [
+      COORDINATOR,
+      `Club registration for semester ${t + 1}! At Last Bell University, joining a club is mandatory, and each student may join at most ${CLUB_MAX} per semester.`,
+    ],
+    [
+      COORDINATOR,
+      'Pick one or two. You cannot change them until next semester, and you must actually turn up to the sessions!',
+    ],
+  ]);
+  const chosen: ClubId[] = [];
+  for (;;) {
+    const left = CLUB_IDS.filter((id) => !chosen.includes(id));
+    const options = left.map((id) => {
+      const C = CLUBS[id];
+      return {
+        icon: C.icon,
+        label: C.name,
+        sub: `${C.blurb} Club level ${St.clubLevel(s.clubs[id].xp)}.`,
+        tag: C.room,
+      };
+    });
+    if (chosen.length)
+      options.push({
+        icon: '✅',
+        label: 'That is enough',
+        sub: `Join only ${CLUBS[chosen[0]].name}`,
+        tag: '',
+      });
+    const i = await ui.choice({
+      title: chosen.length ? '📋 Join a second club?' : '📋 Club registration',
+      sub: chosen.length
+        ? `You picked ${CLUBS[chosen[0]].icon} ${CLUBS[chosen[0]].name}. You may add one more (maximum ${CLUB_MAX}).`
+        : `Semester ${t + 1}: choose your first club. This step is mandatory.`,
+      options,
+      cancel: false,
+    });
+    if (i < 0) continue;
+    if (i >= left.length) break;
+    chosen.push(left[i]);
+    if (chosen.length >= CLUB_MAX) break;
+  }
+  St.joinClubs(s, chosen);
+  const list = chosen.map((id) => `${CLUBS[id].icon} ${CLUBS[id].name}`).join(' and ');
+  await ui.say([
+    [COORDINATOR, `You are in: ${list}. Their rooms are in the Club House. Welcome to the club!`],
+  ]);
+  ui.toast(`📋 Joined ${list}`, 'good', 4200);
+  save();
+}
+
+/** Friends in a club room right now; the lobby may hold any friend who is around. */
+function clubSpec(s: GameState, kind: 'clubhall' | ClubId, from?: ClubId): ClubSpec {
+  const k = St.periodKind(s);
+  const seed = s.day * 61 + s.period * 13 + kind.length * 7 + 5;
+  const rng = mulberry32(seed);
+  const out = St.isFreeKind(k) && s.period < EVENING_PERIOD;
+  const pool = !out
+    ? []
+    : NPC_IDS.filter((id) => St.npcPresent(s, id) && (kind === 'clubhall' || NPC_CLUB[id] === kind));
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return {
+    kind,
+    building: 'club',
+    title: kind === 'clubhall' ? '🎭 Club House' : `${CLUBS[kind].icon} ${CLUBS[kind].room}`,
+    sub: kind === 'clubhall' ? 'Five clubs, five rooms' : CLUBS[kind].name,
+    seed,
+    guests: pool.slice(0, kind === 'clubhall' ? 3 : 4),
+    from,
+  };
+}
+
+/** Walk in through the Club House door. */
+export async function enterClubhouse(): Promise<void> {
+  const s = S();
+  const spec = clubSpec(s, 'clubhall');
+  await ui.fade(true, spec.title, spec.sub);
+  game.scene.enterClub(spec);
+  await sleep(250);
+  await ui.fade(false);
+  if (St.needsClubs(s)) await clubRegistration();
+  else ui.toast('🚪 Each club has its own door along the back wall', 'gold', 4200);
+}
+
+export async function enterClubRoom(club: ClubId): Promise<void> {
+  const s = S();
+  const spec = clubSpec(s, club);
+  await ui.fade(true, spec.title, spec.sub);
+  game.scene.enterClub(spec);
+  await sleep(250);
+  await ui.fade(false);
+  const open = clubOpen(s);
+  ui.toast(
+    open.ok
+      ? `${CLUBS[club].icon} Step onto the glowing spot to start ${CLUBS[club].game}`
+      : `ℹ️ ${open.why}`,
+    open.ok ? 'gold' : 'bad',
+    4200,
+  );
+}
+
+export async function leaveClubRoom(club: ClubId): Promise<void> {
+  const s = S();
+  await ui.fade(true, '🚪 Back to the lobby');
+  game.scene.enterClub(clubSpec(s, 'clubhall', club));
+  await sleep(200);
+  await ui.fade(false);
+}
+
+export async function leaveClubhouse(): Promise<void> {
+  await ui.fade(true, '🚪 Leaving the Club House…');
+  game.scene.exitRoom();
+  await sleep(150);
+  await ui.fade(false);
+}
+
+/** Talk to the registrar: membership rules, this semester's clubs and club levels. */
+export async function talkRegistrar(): Promise<void> {
+  const s = S();
+  for (;;) {
+    const mine = St.members(s);
+    const i = await ui.choice({
+      title: '📋 Club Registrar',
+      sub: `You are in: ${mine.map((id) => `${CLUBS[id].icon} ${CLUBS[id].name}`).join(' · ') || 'no club yet'}`,
+      options: [
+        { icon: 'ℹ️', label: 'About the five clubs', sub: 'What each club does and where its room is' },
+        {
+          icon: '📊',
+          label: 'My membership this semester',
+          sub: 'Sessions attended so far and the club rules',
+        },
+      ],
+      cancelLabel: 'Done',
+    });
+    if (i < 0) return;
+    if (i === 0) {
+      await ui.info(
+        'The five clubs',
+        CLUB_IDS.map((id) => {
+          const C = CLUBS[id];
+          return `<b>${C.icon} ${C.name}</b> · ${C.room}<br>${C.blurb} <i>Trains ${C.stat.toUpperCase()} and ${C.stat2.toUpperCase()}.</i>`;
+        }).join('<br><br>'),
+        'Thanks',
+      );
+    } else {
+      const lines = mine.map((id) => {
+        const n = St.sessionsOf(s, id);
+        return `${CLUBS[id].icon} <b>${CLUBS[id].name}</b>: ${n} session${n === 1 ? '' : 's'} attended`;
+      });
+      await ui.info(
+        `Semester ${St.term(s) + 1} membership`,
+        `${lines.join('<br>') || 'You have not joined a club yet.'}<br><br><b>The rules:</b><br>• Joining a club is mandatory every semester.<br>• You may join <b>one or two</b> clubs, never more.<br>• Attend at least one session of each club you joined, or you get a warning (−5 reputation) on your report.<br>• Sessions run after class, on showcase day and in free periods.`,
+        'Understood',
+      );
+    }
+  }
+}
+
+/** What the player can do in the Club House lobby. */
+export function clubhouseInteractions(): {
+  exit: Interaction;
+  desk: Interaction;
+  doors: Record<ClubId, Interaction>;
+} {
+  const s = S();
+  const mine = St.members(s);
+  const doors = {} as Record<ClubId, Interaction>;
+  for (const id of CLUB_IDS) {
+    const C = CLUBS[id];
+    const member = mine.includes(id);
+    doors[id] = {
+      label: member ? `Enter the ${C.room} (${C.name})` : `${C.name}: members only`,
+      run: () => enterClubRoom(id),
+      enabled: member,
+      why: mine.length
+        ? `You did not join ${C.name} this semester. You are in ${mine.map((m) => CLUBS[m].name).join(' and ')}.`
+        : 'Register for your clubs first: talk to the Club Registrar.',
+    };
+  }
+  return {
+    exit: { label: 'Leave the Club House', run: leaveClubhouse, enabled: true, why: '' },
+    desk: { label: 'Talk to the Club Registrar', run: talkRegistrar, enabled: true, why: '' },
+    doors,
+  };
+}
+
+/** What the player can do inside one club room. */
+export function clubRoomInteractions(club: ClubId): { exit: Interaction; play: Interaction } {
+  const s = S();
+  const C = CLUBS[club];
+  const open = clubOpen(s);
+  const showcase = St.periodKind(s) === 'showcase';
+  return {
+    exit: { label: 'Back to the lobby', run: () => leaveClubRoom(club), enabled: true, why: '' },
+    play: {
+      label: `${C.icon} ${showcase ? 'Showcase: ' : ''}${C.game}`,
+      run: () => doClub(club),
+      enabled: open.ok,
+      why: open.why,
+    },
+  };
 }
 
 /* ============================== lunch / shop / rooftop ============================== */
@@ -915,42 +1458,150 @@ export async function shop(): Promise<void> {
   if (spent) trackQuest('spend', spent);
 }
 
-export async function doCanteen(): Promise<void> {
-  const s = S();
+/* ---------- the canteen: a real room with a hot-food counter, tables, vending machines and a store ---------- */
+interface Dish {
+  icon: string;
+  name: string;
+  price: number;
+  en: number;
+  st: number;
+  /** Colour of the food on the tray. */
+  colour: number;
+}
+const DISHES: Dish[] = [
+  { icon: '🍛', name: 'Curry rice', price: 8, en: 34, st: -6, colour: 0xe0a020 },
+  { icon: '🍜', name: 'Noodle soup', price: 7, en: 30, st: -5, colour: 0xe8c070 },
+  { icon: '🥪', name: 'Sandwich', price: 5, en: 22, st: -3, colour: 0xd99a5a },
+  { icon: '🥗', name: 'Garden salad', price: 6, en: 18, st: -4, colour: 0x4aa84a },
+  { icon: '🍞', name: 'Bread & water', price: 0, en: 12, st: 0, colour: 0xf0d28a },
+];
+const DRINKS = [
+  { icon: '💧', name: 'Water', price: 1, en: 3, st: -1 },
+  { icon: '🥤', name: 'Soda', price: 2, en: 6, st: 0 },
+  { icon: '☕', name: 'Coffee', price: 3, en: 10, st: 2 },
+];
+const CHEF = 'Chef Marco';
+/** The tray the player is carrying (paid for, not yet eaten). */
+let tray: { dish: Dish; paid: number } | null = null;
+
+const mealtime = (s: GameState): boolean => {
   const k = St.periodKind(s);
-  const dishes = [
-    { icon: '🍛', name: 'Curry rice', price: 8, en: 34, st: -6 },
-    { icon: '🥪', name: 'Sandwich', price: 5, en: 22, st: -3 },
-    { icon: '🍞', name: 'Bread & water', price: 0, en: 12, st: 0 },
-  ];
-  const options: ChoiceOption[] = [{ icon: '🛒', label: 'Shop', sub: 'Buy items (does not use time)' }];
-  if (k === 'lunch' || k === 'free') {
-    for (const d of dishes) {
-      options.push({
-        icon: d.icon,
-        label: `Eat ${d.name}`,
-        sub: `+${d.en + (s.canteenSpecial ? 20 : 0)} energy · ${d.st} stress · uses this period`,
-        tag: s.canteenSpecial ? 'FREE' : d.price ? `🪙 ${St.shopPrice(s, d.price)}` : 'free',
-        tagCls: 'gold',
-        disabled: !s.canteenSpecial && s.coins < St.shopPrice(s, d.price),
-      });
-    }
+  return k === 'lunch' || k === 'free';
+};
+const dishPrice = (s: GameState, d: Dish): number =>
+  s.canteenSpecial ? 0 : d.price ? St.shopPrice(s, d.price) : 0;
+
+/** Who is in the canteen right now: friends who are around this period take a table. */
+export function canteenSpec(s: GameState): CanteenSpec {
+  const meal = mealtime(s);
+  const seed = s.day * 53 + s.period * 7 + 11;
+  const rng = mulberry32(seed);
+  const around =
+    St.isFreeKind(St.periodKind(s)) && s.period < EVENING_PERIOD
+      ? NPC_IDS.filter((id) => St.npcPresent(s, id))
+      : [];
+  for (let i = around.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [around[i], around[j]] = [around[j], around[i]];
   }
-  const i = await ui.choice({
-    title: '🍜 Canteen',
-    sub: k === 'lunch' ? 'Lunch time! Eating restores energy.' : 'Meals are only served at lunch.',
-    options,
-  });
-  if (i < 0) return;
-  if (i === 0) {
-    await shop();
+  return {
+    kind: 'canteen',
+    building: 'canteen',
+    title: '🍜 Campus Canteen',
+    sub: meal ? 'Lunch is being served' : 'Kitchen closed · store & vending machines open',
+    seed,
+    guests: around.slice(0, meal ? 5 : 3),
+    mealtime: meal,
+  };
+}
+
+/** Walk through the canteen door: fade in to the interior. */
+export async function enterCanteen(): Promise<void> {
+  const s = S();
+  const spec = canteenSpec(s);
+  tray = null;
+  await ui.fade(true, spec.title, spec.sub);
+  game.scene.enterCanteen(spec);
+  game.scene.setTray(null);
+  await sleep(250);
+  await ui.fade(false);
+  ui.toast(
+    spec.mealtime
+      ? '🍽️ Order at the hot-food counter, then find a seat'
+      : '🛒 The kitchen is closed, but the store and vending machines are open',
+    'gold',
+    4600,
+  );
+}
+
+/** Leave the canteen; a tray you have not eaten is put back and refunded. */
+export async function leaveCanteen(): Promise<void> {
+  const s = S();
+  if (tray) {
+    const ok = await ui.confirm(
+      `You are still holding ${tray.dish.icon} ${tray.dish.name}. Put the tray back and leave? You get your money back.`,
+      'Leave',
+      'Stay and eat',
+      'Leave the canteen?',
+    );
+    if (!ok) return;
+    s.coins += tray.paid;
+    tray = null;
+    game.scene.setTray(null);
+    refreshHud();
+  }
+  await ui.fade(true, '🚪 Leaving the canteen…');
+  game.scene.exitRoom();
+  await sleep(150);
+  await ui.fade(false);
+}
+
+/** The hot-food counter: pick a dish, pay, and carry the tray to a table. */
+async function orderFood(): Promise<void> {
+  const s = S();
+  if (!mealtime(s)) {
+    await ui.say([
+      [CHEF, 'Sorry, we only serve meals at lunch. The store and the vending machines are open though!'],
+    ]);
     return;
   }
-  const d = dishes[i - 1];
-  const price = s.canteenSpecial ? 0 : St.shopPrice(s, d.price);
-  s.coins -= price;
-  trackQuest('spend', price);
-  const gain = d.en + (s.canteenSpecial ? 20 : 0);
+  if (tray) {
+    await ui.say([[CHEF, `You already have ${tray.dish.name} on your tray. Go and find a seat!`]]);
+    return;
+  }
+  const i = await ui.choice({
+    title: '🍽️ Hot-food counter',
+    sub: `${CHEF}: “What will it be?” You have 🪙 ${s.coins}. You eat at a table, which uses this period.`,
+    options: DISHES.map((d) => ({
+      icon: d.icon,
+      label: d.name,
+      sub: `+${d.en + (s.canteenSpecial ? 20 : 0)} energy · ${d.st} stress`,
+      tag: s.canteenSpecial ? 'FREE' : d.price ? `🪙 ${dishPrice(s, d)}` : 'free',
+      tagCls: 'gold',
+      disabled: s.coins < dishPrice(s, d),
+    })),
+    cancelLabel: 'Never mind',
+  });
+  if (i < 0) return;
+  const d = DISHES[i];
+  const paid = dishPrice(s, d);
+  s.coins -= paid;
+  tray = { dish: d, paid };
+  game.scene.setTray(d.colour);
+  Sound.sfx('coin');
+  ui.toast(`${d.icon} ${d.name} on your tray. Find a seat!`, 'good');
+  refreshHud();
+}
+
+/** Sit at a table and eat the meal on your tray. Eating uses the period, like the old canteen menu did. */
+async function sitAndEat(index: number): Promise<void> {
+  const s = S();
+  if (!tray) return;
+  const { dish: d, paid } = tray;
+  const company = game.scene.sitAt(index);
+  const special = s.canteenSpecial;
+  trackQuest('spend', paid);
+  const gain = d.en + (special ? 20 : 0);
   St.addEnergy(s, gain);
   St.addStress(s, d.st);
   St.gainStat(s, 'cha', 0.12);
@@ -958,7 +1609,82 @@ export async function doCanteen(): Promise<void> {
   s.canteenSpecial = false;
   Sound.sfx('ok');
   ui.toast(`${d.icon} Yum! +${gain} energy`, 'good');
+  for (const id of company) {
+    const r = St.addRel(s, id, 3);
+    St.addStress(s, -2);
+    ui.toast(`🍽️ Lunch with ${NPCS[id].name}: friendship +${Math.round(r)}`, 'good');
+  }
+  await sleep(900);
+  tray = null;
+  game.scene.setTray(null);
   await spendPeriod(0, 0);
+}
+
+/** A quick drink from the vending machine. Does not use any time. */
+async function useVending(): Promise<void> {
+  const s = S();
+  for (;;) {
+    const i = await ui.choice({
+      title: '🥤 Vending machine',
+      sub: `You have 🪙 ${s.coins}. Quick drinks do not use any time.`,
+      options: DRINKS.map((d) => ({
+        icon: d.icon,
+        label: d.name,
+        sub: `+${d.en} energy${d.st ? ` · ${d.st > 0 ? '+' : ''}${d.st} stress` : ''}`,
+        tag: `🪙 ${St.shopPrice(s, d.price)}`,
+        tagCls: 'gold',
+        disabled: s.coins < St.shopPrice(s, d.price),
+      })),
+      cancelLabel: 'Done',
+    });
+    if (i < 0) break;
+    const d = DRINKS[i];
+    const price = St.shopPrice(s, d.price);
+    s.coins -= price;
+    St.addEnergy(s, d.en);
+    St.addStress(s, d.st);
+    trackQuest('spend', price);
+    Sound.sfx('coin');
+    ui.toast(`${d.icon} ${d.name}: +${d.en} energy`, 'good');
+    refreshHud();
+  }
+}
+
+/** Things the player can use inside the canteen. */
+export function canteenInteractions(): {
+  order: Interaction;
+  store: Interaction;
+  vending: Interaction;
+  exit: Interaction;
+} {
+  const s = S();
+  const meal = mealtime(s);
+  return {
+    order: {
+      label: tray
+        ? `Hot-food counter (your tray: ${tray.dish.icon} ${tray.dish.name})`
+        : 'Order at the hot-food counter',
+      run: orderFood,
+      enabled: meal,
+      why: 'The kitchen only serves meals at lunch.',
+    },
+    store: { label: 'Browse the campus store', run: shop, enabled: true, why: '' },
+    vending: { label: 'Use the vending machine', run: useVending, enabled: true, why: '' },
+    exit: { label: 'Leave the canteen', run: leaveCanteen, enabled: true, why: '' },
+  };
+}
+
+/** The "sit down" prompt for dining seat `index`; you need a tray first. */
+export function canteenSeat(index: number): Interaction {
+  const s = S();
+  return {
+    label: tray ? `Sit down and eat ${tray.dish.name}` : 'Take a seat',
+    run: () => sitAndEat(index),
+    enabled: !!tray,
+    why: mealtime(s)
+      ? 'Get your food at the hot-food counter first.'
+      : 'The kitchen is closed, so there is no meal to eat.',
+  };
 }
 
 export async function doRooftop(): Promise<void> {
@@ -1046,7 +1772,7 @@ export async function doNotice(): Promise<void> {
       if (x === 'FINAL') label = '⚔️ Finals · Grand Exam Hall';
       else {
         const c = COURSES[x === 'TEST' ? St.testCourse(s) : x];
-        label = `${x === 'TEST' ? '📝 Midterm: ' : ''}${courseLabel(c)} · ${c.room} (${BUILDING_NAME[c.building]})`;
+        label = `${x === 'TEST' ? '📝 Midterm: ' : ''}${courseLabel(c)} · ${c.room} (${BUILDING_NAME[c.building]}, ${floorWord(c.floor)})`;
       }
       return `${PERIODS[i].time}: ${label}`;
     })
@@ -1285,7 +2011,8 @@ async function runEvent(id: NonNullable<GameState['event']>['id']): Promise<void
     const R = await runLesson('pop', subj, {
       count: 4,
       title: `❗ Pop Quiz: ${c.name}`,
-      tier: courseTier(s, c),
+      course: c.id,
+      tier: courseLevel(s, c),
     });
     St.recordScore(s, 'class', c.id, R.pct);
     await gradedResult('pop', subj, R, { title: 'Pop quiz graded!', spend: false });
@@ -1555,6 +2282,26 @@ async function termReport(): Promise<void> {
         .map((x, i) => `${['🥇', '🥈', '🥉'][i]} ${esc(x.name)} ${Math.round(x.score)}%`)
         .join(' &nbsp; ')
     : '';
+  // Clubs are mandatory: list this semester's clubs, and warn about any you never turned up to.
+  const mine = St.members(s, t);
+  if (mine.length)
+    rows.push([
+      'Clubs',
+      mine
+        .map((c) => `${CLUBS[c].icon} ${CLUBS[c].name.replace(' Club', '')} ×${St.sessionsOf(s, c, t)}`)
+        .join(' · '),
+    ]);
+  const skipped = St.skippedClubs(s, t);
+  let clubNote = '';
+  if (skipped.length) {
+    const loss = 5 * skipped.length;
+    s.rep = clamp(s.rep - loss, 0, 100);
+    rows.push([
+      '⚠️ Club attendance',
+      `Never attended ${skipped.map((c) => CLUBS[c].name).join(' or ')} (−${loss} reputation)`,
+    ]);
+    clubNote = `<br>📋 The Club Coordinator filed a warning: you joined but never turned up.`;
+  }
   rows.push(['GPA', `${gpa.toFixed(2)} / 4.00`]);
   rows.push(['Overall', `${Math.round(overall)}% · rank #${rk ? rk.rank : '—'} / ${rk ? rk.total : '—'}`]);
   await ui.results({
@@ -1564,7 +2311,7 @@ async function termReport(): Promise<void> {
     color: g.min >= 0.7 ? '#2fd3a0' : '#ffb300',
     rows,
     chips: [{ text: `🪙 Rank bonus +${bonus}`, cls: 'coin' }],
-    note: `“${comment}” — Academic Advisor<br>${podium}`,
+    note: `“${comment}” — Academic Advisor<br>${podium}${clubNote}`,
     confetti: g.min >= 0.85,
   });
   await achievements();
@@ -1715,7 +2462,7 @@ export async function beginDay(fresh: boolean): Promise<void> {
       ],
       [
         'Dean Hale',
-        'Each lecture meets in its own classroom. Walk to the building, step inside, find your seat and press E to sit down.',
+        'Each course has its own classroom in its department’s building: Newton, Lovelace, Curie, Smith or Hale. Walk in, climb the stairs to the right floor, find the room number on the door and take your seat.',
       ],
       [
         'Dean Hale',
@@ -1737,6 +2484,7 @@ export async function beginDay(fresh: boolean): Promise<void> {
   } else if (s.questStreak >= 2) {
     ui.toast(`🔥 ${s.questStreak}-day quest streak! Finish all quests again for a bonus.`, 'gold', 4200);
   }
+  if (St.needsClubs(s)) await clubRegistration();
   if (St.isTestDay(s))
     ui.toast(`📝 Midterm today: ${COURSES[St.testCourse(s)].name} (period 2)`, 'bad', 5000);
   if (s.rested) ui.toast('😊 Well rested: +2s per question today', 'good', 4200);
@@ -1757,52 +2505,34 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
   const k = St.periodKind(s);
   const inClass = k === 'class' || k === 'test' || k === 'final';
   const free = St.isFreeKind(k);
-  const tired = s.energy < 15;
   const E = (label: string, run: () => Promise<void>, enabled = true, why = ''): Interaction => ({
     label,
     run,
     enabled,
     why,
   });
-  const club = (id: ClubId): Interaction => {
-    const C = CLUBS[id];
-    const ok = (k === 'after' || k === 'showcase' || k === 'free') && !s.detention && !tired;
-    const why = ok
-      ? ''
-      : s.detention
-        ? 'You are on a disciplinary hold today.'
-        : tired
-          ? 'Too tired for club. Eat or rest first.'
-          : inClass
-            ? 'Class is in session!'
-            : k === 'lunch'
-              ? 'Clubs start after class.'
-              : 'Closed for the evening.';
-    return E(`Join ${C.name}: ${C.game}`, () => doClub(id), ok, why);
-  };
   // Which building holds the current lecture (the exam hall for finals), if any.
   const spec = inClass ? classroomSpec(s) : null;
   const here = (b: ClassBuilding): boolean => !!spec && spec.building === b;
-  const enterLabel = spec
-    ? k === 'final'
-      ? `Enter the ${spec.title}`
-      : `${k === 'test' ? 'Midterm: ' : ''}Enter ${spec.title} (${spec.sub.replace(/ · .*/, '')})`
-    : '';
-  const enterWhy = (b: ClassBuilding): string =>
-    spec
-      ? `Your lecture is in ${BUILDING_NAME[spec.building]} (${spec.room}), not here.`
-      : free
-        ? 'Lectures are over for now.'
-        : b === 'main'
-          ? 'Not time for class yet.'
-          : 'Closed for the evening.';
+  // The five department buildings: any of them can be entered to explore, but during a lecture only the building
+  // that holds it.
+  const dept = {} as Record<ClassBuilding, Interaction>;
+  for (const b of DEPT_IDS) {
+    const D = DEPARTMENTS[b];
+    const mine = here(b);
+    dept[b] = E(
+      mine
+        ? `Enter ${D.hall}: ${spec?.room} is on the ${floorWord(spec?.floor ?? 1)}`
+        : `Enter ${D.hall} (${D.school})`,
+      () => enterBuilding(b),
+      k !== 'evening' && (!inClass || mine),
+      inClass
+        ? `Your lecture is in ${BUILDING_NAME[spec?.building ?? 'main']}, not here.`
+        : 'The building is closed for the evening.',
+    );
+  }
   return {
-    main: E(
-      here('main') ? enterLabel : 'Hale Hall (lecture halls)',
-      enterClassroom,
-      here('main'),
-      enterWhy('main'),
-    ),
+    ...dept,
     library: E(
       'Study in the Library',
       doLibrary,
@@ -1810,14 +2540,17 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
       inClass ? 'Class is in session!' : 'The library has closed.',
     ),
     canteen: E(
-      k === 'lunch' ? 'Eat lunch / shop' : 'Canteen & shop',
-      doCanteen,
+      k === 'lunch' ? 'Enter the Canteen (lunch)' : 'Enter the Canteen',
+      enterCanteen,
       free || k === 'evening',
       'Class is in session!',
     ),
-    lab: here('lab') ? E(enterLabel, enterClassroom, true) : club('science'),
-    music: club('music'),
-    gym: club('sports'),
+    club: E(
+      'Enter the Club House',
+      enterClubhouse,
+      free && k !== 'evening',
+      inClass ? 'Class is in session!' : 'The Club House is closed for the evening.',
+    ),
     roof: E(
       inClass ? 'Sneak to the rooftop…' : 'Relax on the rooftop',
       doRooftop,
@@ -1877,5 +2610,6 @@ export async function resume(): Promise<void> {
   await ui.fade(false);
   Sound.startMusic('explore');
   await ui.banner(`Welcome back, ${esc(s.name)}!`, `${dayLabel(s)} · ${PERIODS[s.period].name}`, 1700);
+  if (St.needsClubs(s)) await clubRegistration();
   await maybeEvent();
 }

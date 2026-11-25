@@ -86,10 +86,7 @@ function openMenu(): Promise<void> {
 async function interact(): Promise<void> {
   const t = scene.target;
   if (!t || !canAct()) return;
-  if (
-    (t.kind === 'building' || t.kind === 'seat' || t.kind === 'exit' || t.kind === 'prof') &&
-    !t.info.enabled
-  ) {
+  if (t.kind !== 'npc' && t.kind !== 'cat' && !t.info.enabled) {
     ui.toast(t.info.why || 'Not available right now.', 'bad');
     Sound.sfx('wrong');
     return;
@@ -218,6 +215,8 @@ function boot(): void {
     'Campus Security': { emoji: '🧍', color: '#ff6b6b' },
     'Registrar Clerk': { emoji: '🧑‍💼', color: '#7ec8a0' },
     'Café Manager': { emoji: '👩‍🍳', color: '#ff9a3c' },
+    'Chef Marco': { emoji: '👨‍🍳', color: '#ff9a3c' },
+    'Club Coordinator': { emoji: '📋', color: '#ff7a59' },
     'Guest Speaker': { emoji: '🧑‍🚀', color: '#4aa8ff' },
     'Club Captain': { emoji: '📣', color: '#ff7a59' },
     You: { emoji: '🙂', color: '#4aa8ff' },

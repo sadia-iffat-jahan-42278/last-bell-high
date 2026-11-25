@@ -29,6 +29,8 @@ export class Character {
   private speed = 0;
   /** Sitting at a desk: legs forward, hips lowered, no walking animation. */
   seated = false;
+  /** What the character is busy doing: dancing, or playing an instrument / sport. */
+  activity: 'none' | 'dance' | 'play' = 'none';
 
   private body = new Group();
   private head = new Group();
@@ -231,6 +233,44 @@ export class Character {
     }
   }
 
+  setActivity(a: 'none' | 'dance' | 'play'): void {
+    this.activity = a;
+    this.body.rotation.z = 0;
+    this.armL.rotation.z = 0.05;
+    this.armR.rotation.z = -0.05;
+  }
+
+  private updateDance(dt: number, t: number): void {
+    const beat = t * 4.2 + this.phase;
+    const s = Math.sin(beat);
+    this.body.position.y = 0.85 + Math.abs(Math.cos(beat)) * 0.07;
+    this.body.rotation.x = 0.05;
+    this.body.rotation.z = Math.sin(beat * 0.5) * 0.1;
+    this.head.rotation.x = Math.sin(beat * 0.5) * 0.08;
+    this.legL.rotation.x = s * 0.45;
+    this.legR.rotation.x = -s * 0.45;
+    this.armL.rotation.x = -2.4 + s * 0.5;
+    this.armR.rotation.x = -2.4 - s * 0.5;
+    this.armL.rotation.z = 0.35 + Math.cos(beat) * 0.15;
+    this.armR.rotation.z = -0.35 - Math.cos(beat) * 0.15;
+    if (this.waveT > 0) this.waveT -= dt;
+  }
+
+  /** Standing and playing (guitar, ball): arms held forward and moving. */
+  private updatePlay(dt: number, t: number): void {
+    const beat = t * 6 + this.phase;
+    this.body.position.y = 0.85 + Math.abs(Math.sin(beat * 0.5)) * 0.03;
+    this.body.rotation.x = 0.08;
+    this.head.rotation.x = Math.sin(beat * 0.25) * 0.05;
+    this.legL.rotation.x = Math.sin(beat * 0.5) * 0.12;
+    this.legR.rotation.x = -Math.sin(beat * 0.5) * 0.12;
+    this.armL.rotation.x = -1.15 + Math.sin(beat * 0.5) * 0.1;
+    this.armR.rotation.x = -1.0 + Math.sin(beat * 2) * 0.35;
+    this.armL.rotation.z = 0.1;
+    this.armR.rotation.z = -0.1;
+    if (this.waveT > 0) this.waveT -= dt;
+  }
+
   private updateSeated(dt: number, t: number): void {
     const drop = 0.27;
     this.legL.position.y = 0.86 - drop;
@@ -241,6 +281,11 @@ export class Character {
     this.body.rotation.x = 0.06;
     this.armL.rotation.x = -0.95;
     this.armR.rotation.x = -0.95;
+    if (this.activity === 'play') {
+      // drumming or playing the piano
+      this.armL.rotation.x = -1.25 + Math.sin(t * 9 + this.phase) * 0.28;
+      this.armR.rotation.x = -1.25 + Math.sin(t * 9 + this.phase + 2.1) * 0.28;
+    }
     this.armL.rotation.z = 0.12;
     this.armR.rotation.z = -0.12;
     this.head.rotation.x = Math.sin(t * 1.1 + this.phase) * 0.04;
@@ -266,6 +311,16 @@ export class Character {
     if (this.seated) {
       this.updateSeated(dt, t);
       return;
+    }
+    if (speed < 0.3) {
+      if (this.activity === 'dance') {
+        this.updateDance(dt, t);
+        return;
+      }
+      if (this.activity === 'play') {
+        this.updatePlay(dt, t);
+        return;
+      }
     }
     this.speed += (speed - this.speed) * Math.min(1, dt * 10);
     const sp = this.speed;
@@ -391,6 +446,21 @@ export function professorLook(name: string): Look {
     acc: pick(r, ['none', 'glasses', 'glasses'] as Accessory[]),
     pants: 0x2a2d38,
     tie: pick(r, [0x8a2f3f, 0x2f4a8a, 0x2f7a4b]),
+  };
+}
+
+/** Canteen staff wear a white apron-coloured jacket; `i` picks one of a few distinct people. */
+export function staffLook(i: number): Look {
+  const r = mulberry32(hashStr(`canteen-staff-${i}`));
+  return {
+    skin: pick(r, SKINS),
+    hairStyle: pick(r, ['short', 'bun', 'bob'] as HairStyle[]),
+    hair: pick(r, [0x2a2020, 0x5a3a22, 0x8a8f9a]),
+    blazer: 0xf6f3ea,
+    bag: 0xf6f3ea,
+    acc: i === 2 ? 'cap' : 'none',
+    pants: 0x3a3f4a,
+    tie: 0xd96a28,
   };
 }
 
