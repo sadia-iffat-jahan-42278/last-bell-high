@@ -396,6 +396,23 @@ describe('quests, events, weather', () => {
   });
 });
 
+describe('settings', () => {
+  it('starts new players on High graphics quality', () => {
+    expect(St.defaultMeta().settings.quality).toBe(1.2);
+  });
+
+  it('moves the old default quality to High but keeps a player’s own choice', () => {
+    const saved = (quality: number) =>
+      St.migrateMeta({ settings: { music: 0.2, sfx: 0.3, quality } }).settings;
+    expect(saved(1)).toEqual({ music: 0.2, sfx: 0.3, quality: 1.2 });
+    for (const quality of [0.6, 0.85, 1.2]) expect(saved(quality).quality).toBe(quality);
+  });
+
+  it('fills in missing fields', () => {
+    expect(St.migrateMeta({ ngPlus: 2 })).toEqual({ ...St.defaultMeta(), ngPlus: 2 });
+  });
+});
+
 describe('saves', () => {
   it('rejects junk and wrong versions', () => {
     expect(St.migrateSave(null)).toBeNull();

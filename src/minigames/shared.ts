@@ -24,7 +24,7 @@ const introSeen = new Set<string>();
 export async function intro(id: string, title: string, html: string): Promise<void> {
   if (introSeen.has(id)) return;
   introSeen.add(id);
-  await ui.info(title, html, 'Let’s go! ▶');
+  await ui.info(title, html, 'Let’s Go! ▶');
 }
 
 export function makeCanvas(w: number, h: number): HTMLCanvasElement {

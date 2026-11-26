@@ -49,6 +49,8 @@ import { clamp, hashStr, mulberry32, type Rng } from './util';
 export const SAVE_KEY = 'lastbell.save.v2';
 export const META_KEY = 'lastbell.meta.v1';
 export const TOTAL_DAYS = TERMS * DAYS_PER_TERM;
+/** The student's name when the player does not choose one. */
+export const DEFAULT_NAME = 'Alex';
 
 export function defaultLook(): Look {
   return {
@@ -65,7 +67,7 @@ export function defaultLook(): Look {
 
 export function defaultMeta(): Meta {
   return {
-    settings: { music: 0.5, sfx: 0.8, quality: 1 },
+    settings: { music: 0.5, sfx: 0.8, quality: 1.2 },
     ngPlus: 0,
     endings: [],
     bestRank: 99,
@@ -87,7 +89,7 @@ export function newState(name: string, look: Look, meta: Meta = defaultMeta()): 
   const npcIds = Object.keys(NPCS) as NpcId[];
   const s: GameState = {
     v: 2,
-    name: name || 'Student',
+    name: name || DEFAULT_NAME,
     look: { ...look },
     day: 0,
     period: 0,
@@ -556,7 +558,7 @@ export function migrateSave(raw: unknown): GameState | null {
   if (!isRecord(raw) || raw.v !== 2) return null;
   if (typeof raw.day !== 'number' || !isRecord(raw.look) || !isRecord(raw.friends)) return null;
   const base = newState(
-    typeof raw.name === 'string' ? raw.name : 'Student',
+    typeof raw.name === 'string' ? raw.name : DEFAULT_NAME,
     defaultLook(),
   ) as unknown as Json;
   const out: Json = { ...base, ...raw };
@@ -601,10 +603,18 @@ export function clearSave(): void {
     /* storage unavailable */
   }
 }
+/** Fill in missing fields and update values saved by earlier versions. */
+export function migrateMeta(raw: Partial<Meta>): Meta {
+  const base = defaultMeta();
+  const meta: Meta = { ...base, ...raw, settings: { ...base.settings, ...raw.settings } };
+  // 1 was the old default graphics quality and matches no button, so those players move to High.
+  if (meta.settings.quality === 1) meta.settings.quality = base.settings.quality;
+  return meta;
+}
 export function loadMeta(): Meta {
   try {
     const r = localStorage.getItem(META_KEY);
-    return r ? { ...defaultMeta(), ...JSON.parse(r) } : defaultMeta();
+    return r ? migrateMeta(JSON.parse(r)) : defaultMeta();
   } catch {
     return defaultMeta();
   }

@@ -52,10 +52,10 @@ function openMenu(): Promise<void> {
         title: '☰ Menu',
         options: [
           { icon: '▶️', label: 'Resume' },
-          { icon: '💾', label: 'Save game', sub: 'Progress also saves automatically' },
+          { icon: '💾', label: 'Save Game', sub: 'Progress also saves automatically' },
           { icon: '⚙️', label: 'Settings' },
-          { icon: '❓', label: 'How to play' },
-          { icon: '🏠', label: 'Quit to title' },
+          { icon: '❓', label: 'How to Play' },
+          { icon: '🏠', label: 'Quit to Title' },
         ],
         cancel: false,
       });
@@ -120,6 +120,8 @@ async function interact(): Promise<void> {
 async function titleFlow(autoNew = false): Promise<void> {
   scene.mode = 'title';
   hud.hide();
+  Sound.init();
+  Sound.startMusic('explore');
   if (autoNew) {
     await newGameFlow();
     return;
@@ -138,7 +140,7 @@ async function titleFlow(autoNew = false): Promise<void> {
     } else if (choice === 'new') {
       if (
         sv &&
-        !(await ui.confirm('Starting a new game will overwrite your saved progress.', 'Start new', 'Cancel'))
+        !(await ui.confirm('Starting a new game will overwrite your saved progress.', 'Start New', 'Cancel'))
       )
         continue;
       await newGameFlow();
@@ -171,7 +173,7 @@ async function newGameFlow(): Promise<void> {
   scene.setPeriod(2, true);
   const res = await creatorScreen({
     look,
-    name: '',
+    name: St.DEFAULT_NAME,
     unlocks: {
       hair: [0, 1, 2, 3],
       blazer: [0, 1, 2, 3],
@@ -243,6 +245,10 @@ function boot(): void {
     if (canAct()) void interact();
   };
   applySettings(game.meta);
+  // Most browsers hold audio back until the player interacts, so resume it on the first click, tap or key press.
+  for (const type of ['pointerdown', 'pointerup', 'keydown']) {
+    addEventListener(type, () => Sound.init(), { capture: true });
+  }
   if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
   scene.setPeriod(2, true);
   scene.mode = 'title';

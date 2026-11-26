@@ -274,7 +274,7 @@ export const ui = {
     sub = '',
     options,
     cancel = true,
-    cancelLabel = 'Never mind',
+    cancelLabel = 'Never Mind',
     icon = '',
   }: ChoiceConfig): Promise<number> {
     const card = el('div', 'card menu');

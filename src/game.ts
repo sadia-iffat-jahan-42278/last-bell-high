@@ -192,6 +192,8 @@ const WEATHER: Record<Weather, string> = { sunny: '☀️ Sunny', cloudy: '☁�
 const BUILDING_NAME = BUILDING_LABEL;
 export const floorWord = (n: number): string =>
   ['', 'ground floor', '2nd floor', '3rd floor', '4th floor', '5th floor'][n] ?? `floor ${n}`;
+/** `floorWord` in title case, for use on buttons. */
+const floorLabel = (n: number): string => floorWord(n).replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
 const courseLabel = (c: Course): string => `${SUBJECTS[c.area].icon} ${c.name}`;
 
 /** The classroom for this period's lecture, midterm or finals, or null when nothing is scheduled. */
@@ -718,7 +720,7 @@ export function floorInteractions(
     const c = courseInRoom(building, floor, slot);
     const exam = building === EXAM_HALL.building && floor === EXAM_HALL.floor && slot === EXAM_HALL.slot;
     const mine = !!spec && spec.building === building && spec.floor === floor && spec.slot === slot;
-    const name = c ? `${c.room}: ${c.name}` : exam ? `${EXAM_HALL.room}: ${EXAM_HALL.name}` : 'Staff room';
+    const name = c ? `${c.room}: ${c.name}` : exam ? `${EXAM_HALL.room}: ${EXAM_HALL.name}` : 'Staff Room';
     doors.push({
       label: mine ? `Enter ${name}` : `${name}`,
       run: enterClassroom,
@@ -733,7 +735,7 @@ export function floorInteractions(
   return {
     exit: { label: `Leave ${DEPARTMENTS[building].hall}`, run: leaveBuilding, enabled: true, why: '' },
     directory: {
-      label: 'Read the building directory',
+      label: 'Read the Building Directory',
       run: () => showDirectory(building),
       enabled: true,
       why: '',
@@ -1245,7 +1247,7 @@ export async function clubRegistration(): Promise<void> {
     if (chosen.length)
       options.push({
         icon: '✅',
-        label: 'That is enough',
+        label: 'That Is Enough',
         sub: `Join only ${CLUBS[chosen[0]].name}`,
         tag: '',
       });
@@ -1348,10 +1350,10 @@ export async function talkRegistrar(): Promise<void> {
       title: '📋 Club Registrar',
       sub: `You are in: ${mine.map((id) => `${CLUBS[id].icon} ${CLUBS[id].name}`).join(' · ') || 'no club yet'}`,
       options: [
-        { icon: 'ℹ️', label: 'About the five clubs', sub: 'What each club does and where its room is' },
+        { icon: 'ℹ️', label: 'About the Five Clubs', sub: 'What each club does and where its room is' },
         {
           icon: '📊',
-          label: 'My membership this semester',
+          label: 'My Membership This Semester',
           sub: 'Sessions attended so far and the club rules',
         },
       ],
@@ -1394,7 +1396,7 @@ export function clubhouseInteractions(): {
     const C = CLUBS[id];
     const member = mine.includes(id);
     doors[id] = {
-      label: member ? `Enter the ${C.room} (${C.name})` : `${C.name}: members only`,
+      label: member ? `Enter the ${C.room} (${C.name})` : `${C.name}: Members Only`,
       run: () => enterClubRoom(id),
       enabled: member,
       why: mine.length
@@ -1416,7 +1418,7 @@ export function clubRoomInteractions(club: ClubId): { exit: Interaction; play: I
   const open = clubOpen(s);
   const showcase = St.periodKind(s) === 'showcase';
   return {
-    exit: { label: 'Back to the lobby', run: () => leaveClubRoom(club), enabled: true, why: '' },
+    exit: { label: 'Back to the Lobby', run: () => leaveClubRoom(club), enabled: true, why: '' },
     play: {
       label: `${C.icon} ${showcase ? 'Showcase: ' : ''}${C.game}`,
       run: () => doClub(club),
@@ -1443,7 +1445,7 @@ export async function shop(): Promise<void> {
         tagCls: 'gold',
         disabled: s.coins < St.shopPrice(s, ITEMS[k].price),
       })),
-      cancelLabel: 'Done shopping',
+      cancelLabel: 'Done Shopping',
     });
     if (i < 0) break;
     const k = keys[i];
@@ -1469,11 +1471,11 @@ interface Dish {
   colour: number;
 }
 const DISHES: Dish[] = [
-  { icon: '🍛', name: 'Curry rice', price: 8, en: 34, st: -6, colour: 0xe0a020 },
-  { icon: '🍜', name: 'Noodle soup', price: 7, en: 30, st: -5, colour: 0xe8c070 },
+  { icon: '🍛', name: 'Curry Rice', price: 8, en: 34, st: -6, colour: 0xe0a020 },
+  { icon: '🍜', name: 'Noodle Soup', price: 7, en: 30, st: -5, colour: 0xe8c070 },
   { icon: '🥪', name: 'Sandwich', price: 5, en: 22, st: -3, colour: 0xd99a5a },
-  { icon: '🥗', name: 'Garden salad', price: 6, en: 18, st: -4, colour: 0x4aa84a },
-  { icon: '🍞', name: 'Bread & water', price: 0, en: 12, st: 0, colour: 0xf0d28a },
+  { icon: '🥗', name: 'Garden Salad', price: 6, en: 18, st: -4, colour: 0x4aa84a },
+  { icon: '🍞', name: 'Bread & Water', price: 0, en: 12, st: 0, colour: 0xf0d28a },
 ];
 const DRINKS = [
   { icon: '💧', name: 'Water', price: 1, en: 3, st: -1 },
@@ -1541,7 +1543,7 @@ export async function leaveCanteen(): Promise<void> {
     const ok = await ui.confirm(
       `You are still holding ${tray.dish.icon} ${tray.dish.name}. Put the tray back and leave? You get your money back.`,
       'Leave',
-      'Stay and eat',
+      'Stay and Eat',
       'Leave the canteen?',
     );
     if (!ok) return;
@@ -1580,7 +1582,7 @@ async function orderFood(): Promise<void> {
       tagCls: 'gold',
       disabled: s.coins < dishPrice(s, d),
     })),
-    cancelLabel: 'Never mind',
+    cancelLabel: 'Never Mind',
   });
   if (i < 0) return;
   const d = DISHES[i];
@@ -1662,15 +1664,15 @@ export function canteenInteractions(): {
   return {
     order: {
       label: tray
-        ? `Hot-food counter (your tray: ${tray.dish.icon} ${tray.dish.name})`
-        : 'Order at the hot-food counter',
+        ? `Hot-Food Counter (Your Tray: ${tray.dish.icon} ${tray.dish.name})`
+        : 'Order at the Hot-Food Counter',
       run: orderFood,
       enabled: meal,
       why: 'The kitchen only serves meals at lunch.',
     },
-    store: { label: 'Browse the campus store', run: shop, enabled: true, why: '' },
-    vending: { label: 'Use the vending machine', run: useVending, enabled: true, why: '' },
-    exit: { label: 'Leave the canteen', run: leaveCanteen, enabled: true, why: '' },
+    store: { label: 'Browse the Campus Store', run: shop, enabled: true, why: '' },
+    vending: { label: 'Use the Vending Machine', run: useVending, enabled: true, why: '' },
+    exit: { label: 'Leave the Canteen', run: leaveCanteen, enabled: true, why: '' },
   };
 }
 
@@ -1678,7 +1680,7 @@ export function canteenInteractions(): {
 export function canteenSeat(index: number): Interaction {
   const s = S();
   return {
-    label: tray ? `Sit down and eat ${tray.dish.name}` : 'Take a seat',
+    label: tray ? `Sit Down and Eat ${tray.dish.name}` : 'Take a Seat',
     run: () => sitAndEat(index),
     enabled: !!tray,
     why: mealtime(s)
@@ -1698,8 +1700,8 @@ export async function doRooftop(): Promise<void> {
   if (classTime) {
     const ok = await ui.confirm(
       'Skipping a lecture is risky: if campus security catches you, you face a disciplinary hearing and lose reputation. Nobody gets credit for the lecture.',
-      'Skip class 😏',
-      'Go to class instead',
+      'Skip Class 😏',
+      'Go to Class Instead',
       'Skip class?',
     );
     if (!ok) return;
@@ -1730,8 +1732,8 @@ export async function doRooftop(): Promise<void> {
     title: '🌤️ Rooftop',
     sub: 'A quiet spot above the campus. Costs this period.',
     options: [
-      { icon: '😌', label: 'Relax and watch the clouds', sub: '−18 stress · +12 energy' },
-      { icon: '🎧', label: 'Listen to music', sub: '−12 stress · +CRE' },
+      { icon: '😌', label: 'Relax and Watch the Clouds', sub: '−18 stress · +12 energy' },
+      { icon: '🎧', label: 'Listen to Music', sub: '−12 stress · +CRE' },
     ],
   });
   if (i < 0) return;
@@ -1849,7 +1851,7 @@ export async function talkTo(npc: NpcId): Promise<void> {
       },
       {
         icon: '🎁',
-        label: 'Give a gift',
+        label: 'Give a Gift',
         sub: canGift
           ? 'Snack Box (+10) or Energy Drink (+12)'
           : f.gift === s.day
@@ -2099,8 +2101,8 @@ export async function doHome(): Promise<void> {
   if (k !== 'evening') {
     const ok = await ui.confirm(
       'Go home now? You will skip the rest of the day’s activities.',
-      'Go home',
-      'Stay on campus',
+      'Go Home',
+      'Stay on Campus',
     );
     if (!ok) return;
     s.period = EVENING_PERIOD - 1;
@@ -2113,13 +2115,13 @@ export async function doHome(): Promise<void> {
     options: [
       {
         icon: '😴',
-        label: 'Sleep early',
+        label: 'Sleep Early',
         sub: 'Full rest: +70 energy · −15 stress · "Well rested" buff (+2s per question tomorrow)',
       },
-      { icon: '🌙', label: 'Study late', sub: 'A big mastery boost, but a shorter sleep (+35 energy)' },
-      { icon: '🎮', label: 'Game night', sub: '−35 stress · +CRE · normal sleep (+50 energy)' },
+      { icon: '🌙', label: 'Study Late', sub: 'A big mastery boost, but a shorter sleep (+35 energy)' },
+      { icon: '🎮', label: 'Game Night', sub: '−35 stress · +CRE · normal sleep (+50 energy)' },
     ],
-    cancelLabel: 'Not yet',
+    cancelLabel: 'Not Yet',
   });
   if (i < 0) return;
   s.flags.sleep = i === 0 ? 'early' : i === 2 ? 'game' : 'late';
@@ -2409,8 +2411,8 @@ async function ending(): Promise<void> {
     note: text,
     confetti: true,
     buttons: [
-      { label: '✨ New Game+ (keep cosmetics, bonus perk)', primary: true },
-      { label: 'Title screen' },
+      { label: '✨ New Game+ (Keep Cosmetics, Bonus Perk)', primary: true },
+      { label: 'Title Screen' },
     ],
   });
   meta.ngPlus += pick === 0 ? 1 : 0;
@@ -2522,7 +2524,7 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
     const mine = here(b);
     dept[b] = E(
       mine
-        ? `Enter ${D.hall}: ${spec?.room} is on the ${floorWord(spec?.floor ?? 1)}`
+        ? `Enter ${D.hall}: ${spec?.room} Is on the ${floorLabel(spec?.floor ?? 1)}`
         : `Enter ${D.hall} (${D.school})`,
       () => enterBuilding(b),
       k !== 'evening' && (!inClass || mine),
@@ -2540,7 +2542,7 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
       inClass ? 'Class is in session!' : 'The library has closed.',
     ),
     canteen: E(
-      k === 'lunch' ? 'Enter the Canteen (lunch)' : 'Enter the Canteen',
+      k === 'lunch' ? 'Enter the Canteen (Lunch)' : 'Enter the Canteen',
       enterCanteen,
       free || k === 'evening',
       'Class is in session!',
@@ -2552,18 +2554,18 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
       inClass ? 'Class is in session!' : 'The Club House is closed for the evening.',
     ),
     roof: E(
-      inClass ? 'Sneak to the rooftop…' : 'Relax on the rooftop',
+      inClass ? 'Sneak to the Rooftop…' : 'Relax on the Rooftop',
       doRooftop,
       k !== 'evening' && k !== 'final',
       k === 'final' ? 'No sneaking out of finals!' : 'The roof is locked at night.',
     ),
     gate: E(
-      k === 'evening' ? 'Go home & end the day' : 'Go home early',
+      k === 'evening' ? 'Go Home & End the Day' : 'Go Home Early',
       doHome,
       !inClass,
       'You can’t leave during class.',
     ),
-    notice: E('Check the notice board', doNotice),
+    notice: E('Check the Notice Board', doNotice),
   };
 }
 
@@ -2575,23 +2577,23 @@ export function roomInteractions(): { seat: Interaction; exit: Interaction; prof
   const spec = classroomSpec(s);
   const name = (() => {
     const id = St.classCourse(s);
-    return id ? COURSES[id].name : 'the exam';
+    return id ? COURSES[id].name : 'The Exam';
   })();
   return {
     seat: {
       label:
         k === 'test'
-          ? 'Sit down for the midterm'
+          ? 'Sit Down for the Midterm'
           : k === 'final'
-            ? 'Take your seat for finals'
-            : `Sit down: ${name}`,
+            ? 'Take Your Seat for Finals'
+            : `Sit Down: ${name}`,
       run: attendClass,
       enabled: inClass,
       why: 'No lecture is scheduled right now.',
     },
-    exit: { label: 'Leave the room', run: leaveClassroom, enabled: true, why: '' },
+    exit: { label: 'Leave the Room', run: leaveClassroom, enabled: true, why: '' },
     prof: {
-      label: `Talk to ${spec?.prof ?? 'the professor'}`,
+      label: `Talk to ${spec?.prof ?? 'the Professor'}`,
       run: talkProfessor,
       enabled: true,
       why: '',

@@ -60,6 +60,7 @@ const meter = (v: number, max: number, color: string): string =>
   `<div class="meter"><div style="width:${Math.min(100, (v / max) * 100)}%;--c:${color}"></div></div>`;
 
 type ColourKind = 'hair' | 'blazer' | 'bag';
+const capital = (s: string): string => s[0].toUpperCase() + s.slice(1);
 
 export function openJournal(startTab: TabId = 'me'): Promise<void> {
   const s = game.s;
@@ -279,12 +280,12 @@ function wardrobe(b: HTMLElement, s: GameState, rerender: () => void): void {
         return `<span class="swatch ${look[key] === c ? 'on' : ''} ${owned ? '' : 'lock'}" data-k="${key}" data-kind="${kind}" data-i="${i}" style="background:${hexCss(c)}">${owned ? '' : `<small>🪙${cost}</small>`}</span>`;
       })
       .join('');
-  b.innerHTML = `<div class="box"><h4>Hair style</h4>${HAIR_STYLES.map((h) => `<span class="chipbtn clickable ${look.hairStyle === h ? 'on' : ''}" data-hs="${h}">${h}</span>`).join('')}
+  b.innerHTML = `<div class="box"><h4>Hair style</h4>${HAIR_STYLES.map((h) => `<span class="chipbtn clickable ${look.hairStyle === h ? 'on' : ''}" data-hs="${h}">${capital(h)}</span>`).join('')}
     <h4 class="spaced">Skin</h4>${swatches(SKINS, 'skin', 'skin')}<h4 class="spaced">Hair colour</h4>${swatches(HAIR_COLORS, 'hair', 'hair')}<h4 class="spaced">Blazer</h4>${swatches(BLAZERS, 'blazer', 'blazer')}<h4 class="spaced">Backpack</h4>${swatches(BAGS, 'bag', 'bag')}
     <h4 class="spaced">Accessory</h4>${ACCESSORIES.map((a) => {
       const owned = unlocked.acc.includes(a);
       const hint = ACC_PRICE[a] ? '🪙' + ACC_PRICE[a] : (ACC_LOCK[a] ?? '');
-      return `<span class="chipbtn clickable ${look.acc === a ? 'on' : ''}" data-ac="${a}" style="opacity:${owned ? 1 : 0.6}">${owned ? '' : '🔒 '}${a}${owned ? '' : ` <small>${hint}</small>`}</span>`;
+      return `<span class="chipbtn clickable ${look.acc === a ? 'on' : ''}" data-ac="${a}" style="opacity:${owned ? 1 : 0.6}">${owned ? '' : '🔒 '}${capital(a)}${owned ? '' : ` <small>${hint}</small>`}</span>`;
     }).join('')}</div>`;
 
   const apply = () => {
