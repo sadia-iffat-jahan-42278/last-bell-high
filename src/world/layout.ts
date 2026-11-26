@@ -1,5 +1,5 @@
 // Campus layout: pure data shared by the 3D scene, collisions, minimap and game rules.
-import { NPC_IDS, type NpcId, type ZoneId } from '../core/types';
+import type { ZoneId } from '../core/types';
 
 export interface Point {
   x: number;
@@ -174,8 +174,8 @@ ZONES.gate = { x: 0, z: 44 };
 ZONES.notice = { x: NOTICE.x, z: NOTICE.z + 2.2 };
 
 type XZ = [number, number];
-/** Sixteen open standing spots around campus. Each friend takes one at lunch and another after class. */
-const SPOTS: XZ[] = [
+/** Open places around campus where friends like to hang about. */
+export const GATHERING_SPOTS: XZ[] = [
   [-7.5, 9.5],
   [21.5, -4.8],
   [7.5, 9.5],
@@ -193,11 +193,6 @@ const SPOTS: XZ[] = [
   [-9.5, 31],
   [10, 33.5],
 ];
-/** Friends' standing spots at lunch and after class (a shifted permutation of `SPOTS`, so spots never clash). */
-export const HANGOUTS = {} as Record<NpcId, { lunch: XZ; after: XZ }>;
-NPC_IDS.forEach((id, i) => {
-  HANGOUTS[id] = { lunch: SPOTS[i], after: SPOTS[(i + 4) % SPOTS.length] };
-});
 export const CROWD_POINTS: XZ[] = [
   [-12, 2],
   [12, 2],
@@ -235,3 +230,9 @@ export const CATS: XZ[] = [
   [10, 46.5],
 ];
 export const START = { x: 0, z: 41 };
+/** The patch of campus each member of staff keeps to during the day: its centre and how far they roam. */
+export const STAFF_SPOTS: { id: string; x: number; z: number; r: number }[] = [
+  { id: 'x_dean', x: 6.5, z: -18.6, r: 5 },
+  { id: 'x_clerk', x: -3.8, z: -18.6, r: 3.5 },
+  { id: 'x_security', x: 6, z: 43, r: 9 },
+];

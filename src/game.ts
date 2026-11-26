@@ -32,6 +32,18 @@ import {
   xpForLevel,
   type Course,
 } from './core/data';
+import {
+  PEOPLE,
+  PERSONALITY_AT,
+  REACTIONS,
+  REPLIES,
+  TONE_NAME,
+  interactionLevel,
+  professorId,
+  relationshipLabel,
+  replyOptions,
+  type Mood,
+} from './core/people';
 import * as St from './core/state';
 import {
   CLUB_IDS,
@@ -47,6 +59,7 @@ import {
   type Meta,
   type NpcId,
   type PerkId,
+  type PersonId,
   type QuestId,
   type RoomKind,
   type SubjectId,
@@ -121,6 +134,8 @@ export interface FloorSpec {
   seed: number;
   /** Friends in the corridor right now. */
   guests: NpcId[];
+  /** Name of a professor waiting in this corridor between lectures. */
+  professor?: string;
   /** Where the player appears: through the entrance, up or down the stairs, or out of classroom door n. */
   arrive: 'entrance' | 'up' | 'down' | { door: number };
 }
@@ -354,8 +369,12 @@ export function applyFx(fx: Fx, npc?: NpcId): Chip[] {
     }
   }
   if (fx.rel && npc) {
+    gainInteraction(s, npc, 5);
     const d = St.addRel(s, npc, fx.rel);
-    chips.push({ text: `💖 ${NPCS[npc].name} +${Math.round(d)}`, cls: 'stat' });
+    chips.push({
+      text: `${d >= 0 ? '💖' : '💔'} ${NPCS[npc].name} ${signed(d)}`,
+      cls: d >= 0 ? 'stat' : 'bad',
+    });
   }
   if (fx.stress) {
     St.addStress(s, fx.stress);
@@ -598,6 +617,15 @@ let where: { building: ClassBuilding; floor: number } | null = null;
 /** The classroom the player is standing in, so leaving it can return to its corridor. */
 let lastRoom: RoomSpec | null = null;
 
+/** Between lectures, one of the professors who teaches on this floor can be found in the corridor. */
+function corridorProfessor(s: GameState, building: ClassBuilding, floor: number): string | undefined {
+  const here = Object.values(COURSES).filter((c) => c.building === building && c.floor === floor);
+  const now = new Set(St.courses(s));
+  const pool = here.filter((c) => now.has(c.id));
+  const list = pool.length ? pool : here;
+  return list.length ? list[(s.day + s.period) % list.length].prof : undefined;
+}
+
 function floorSpec(
   s: GameState,
   building: ClassBuilding,
@@ -622,6 +650,8 @@ function floorSpec(
     sub: `${D.school} · ${floorWord(floor)}`,
     seed,
     guests: around.slice(0, floor === 1 ? 2 : 1),
+    professor:
+      St.isFreeKind(k) && s.period < EVENING_PERIOD ? corridorProfessor(s, building, floor) : undefined,
     arrive,
   };
 }
@@ -781,51 +811,18 @@ export async function attendClass(): Promise<void> {
   else await doFinal();
 }
 
-/** Chat with the professor before the lesson starts: a study tip once per course per day. */
+/** Talk with the professor at the front before the lesson starts. */
 export async function talkProfessor(): Promise<void> {
   const s = S();
-  const id = St.classCourse(s);
   const spec = classroomSpec(s);
   if (!spec) return;
+  const id = professorId(spec.prof);
   if (!id) {
+    // the finals examiner is not part of the cast
     await ui.say([[spec.prof, 'Take your seat when you are ready. Good luck today.']]);
     return;
   }
-  const c = COURSES[id];
-  if (s.profDay[id] === s.day) {
-    await ui.say([[c.prof, 'We already talked today. Save some questions for office hours!']]);
-    return;
-  }
-  await ui.say([[c.prof, `Welcome to ${c.name} (${c.code}). Ask me anything before we begin.`]]);
-  const i = await ui.ask(c.prof, 'What do you ask?', [
-    'Any study tips?',
-    St.isTestDay(s) || St.isFinals(s) ? 'What will the exam cover?' : 'When is the midterm?',
-    'Just say hello',
-  ]);
-  s.profDay[id] = s.day;
-  if (i === 0) {
-    const m = St.addMastery(s, c.area, 1.6);
-    St.addXP(s, 10);
-    await ui.say([[c.prof, 'Do a few practice questions every day. Little and often beats cramming.']]);
-    ui.toast(`${SUBJECTS[c.area].icon} Study tip: mastery +${m.toFixed(1)}`, 'good');
-  } else if (i === 1) {
-    const ex = St.isTestDay(s) ? 'this midterm' : 'the semester';
-    await ui.say([
-      [
-        c.prof,
-        St.isFinals(s) || St.isTestDay(s)
-          ? `Expect ${SUBJECTS[c.area].name.toLowerCase()} questions at about difficulty ${c.tier} out of 4. Stay calm.`
-          : `The midterm is on Wednesday of week one, and finals close the semester. Keep up with ${ex}.`,
-      ],
-    ]);
-    St.addStress(s, -3);
-    ui.toast('😌 Advice received: −3 stress', 'good');
-  } else {
-    await ui.say([[c.prof, 'Always nice to see a friendly face. Let’s get started.']]);
-    s.rep = clamp(s.rep + 1, 0, 100);
-    St.gainStat(s, 'cha', 0.1);
-  }
-  refreshHud();
+  await talkPerson(id);
 }
 
 export async function doClass(): Promise<void> {
@@ -845,6 +842,7 @@ export async function doClass(): Promise<void> {
   s.totals.classes++;
   trackQuest('classes');
   await gradedResult('class', subj, R, { title: 'Lecture quiz graded!' });
+  professorReacts(s, c, R.pct);
   await spendPeriod(BASE.class.energy, BASE.class.stress * (1 - R.pct));
 }
 
@@ -871,6 +869,12 @@ export async function doTest(): Promise<void> {
     s.detention = true;
     St.addStress(s, 20);
     St.recordScore(s, 'test', id, 0);
+    const pid = professorId(c.prof);
+    if (pid) {
+      gainInteraction(s, pid, 5);
+      St.addRel(s, pid, -20);
+      ui.toast(`💔 ${c.prof} will not forget this: relationship −20`, 'bad', 4200);
+    }
     Sound.sfx('lose');
     await ui.say([
       [
@@ -902,6 +906,7 @@ export async function doTest(): Promise<void> {
     ui.toast('😏 Nobody noticed the cheat sheet…', 'gold');
   }
   await gradedResult('test', subj, R, { title: 'Midterm results' });
+  professorReacts(s, c, R.pct, 2);
   if (s.flags.rinWager) {
     // Rin's rival wager resolves on the next midterm.
     const roll = mulberry32(s.day * 71 + 5)();
@@ -920,6 +925,7 @@ export async function doTest(): Promise<void> {
     ]);
     if (win) {
       St.addCoins(s, 50);
+      gainInteraction(s, 'rin', 5);
       St.addRel(s, 'rin', 10);
       ui.toast('🏆 Won the wager! +50 🪙', 'gold');
     } else {
@@ -1356,10 +1362,15 @@ export async function talkRegistrar(): Promise<void> {
           label: 'My Membership This Semester',
           sub: 'Sessions attended so far and the club rules',
         },
+        { icon: '💬', label: 'Talk to the Club Coordinator', sub: scoreLine(s, 'x_coordinator') },
       ],
       cancelLabel: 'Done',
     });
     if (i < 0) return;
+    if (i === 2) {
+      await talkPerson('x_coordinator');
+      continue;
+    }
     if (i === 0) {
       await ui.info(
         'The five clubs',
@@ -1561,6 +1572,25 @@ export async function leaveCanteen(): Promise<void> {
 /** The hot-food counter: pick a dish, pay, and carry the tray to a table. */
 async function orderFood(): Promise<void> {
   const s = S();
+  const first = await ui.choice({
+    title: '🍽️ Hot-food counter',
+    sub: `${CHEF} is behind the counter.`,
+    options: [
+      {
+        icon: '🍛',
+        label: 'Order Food',
+        sub: mealtime(s) ? 'Pick a dish' : 'The kitchen is closed',
+        disabled: !mealtime(s),
+      },
+      { icon: '💬', label: `Talk to ${CHEF}`, sub: scoreLine(s, 'x_chef') },
+    ],
+    cancelLabel: 'Never Mind',
+  });
+  if (first === 1) {
+    await talkPerson('x_chef');
+    return;
+  }
+  if (first !== 0) return;
   if (!mealtime(s)) {
     await ui.say([
       [CHEF, 'Sorry, we only serve meals at lunch. The store and the vending machines are open though!'],
@@ -1612,6 +1642,7 @@ async function sitAndEat(index: number): Promise<void> {
   Sound.sfx('ok');
   ui.toast(`${d.icon} Yum! +${gain} energy`, 'good');
   for (const id of company) {
+    gainInteraction(s, id, 5);
     const r = St.addRel(s, id, 3);
     St.addStress(s, -2);
     ui.toast(`🍽️ Lunch with ${NPCS[id].name}: friendship +${Math.round(r)}`, 'good');
@@ -1659,16 +1690,14 @@ export function canteenInteractions(): {
   vending: Interaction;
   exit: Interaction;
 } {
-  const s = S();
-  const meal = mealtime(s);
   return {
     order: {
       label: tray
         ? `Hot-Food Counter (Your Tray: ${tray.dish.icon} ${tray.dish.name})`
         : 'Order at the Hot-Food Counter',
       run: orderFood,
-      enabled: meal,
-      why: 'The kitchen only serves meals at lunch.',
+      enabled: true,
+      why: '',
     },
     store: { label: 'Browse the Campus Store', run: shop, enabled: true, why: '' },
     vending: { label: 'Use the Vending Machine', run: useVending, enabled: true, why: '' },
@@ -1706,7 +1735,15 @@ export async function doRooftop(): Promise<void> {
     );
     if (!ok) return;
     Sound.sfx('whoosh');
+    const skipped = St.classCourse(s);
+    const lecturer = skipped ? professorId(COURSES[skipped].prof) : null;
+    if (lecturer) {
+      St.addRel(s, lecturer, -6);
+      ui.toast(`💔 ${PEOPLE[lecturer].name} noticed your empty seat: relationship −6`, 'bad', 4200);
+    }
     if (Math.random() < 0.4) {
+      gainInteraction(s, 'x_security', 5);
+      St.addRel(s, 'x_security', -8);
       s.caught++;
       s.rep = clamp(s.rep - 12, 0, 100);
       s.detention = true;
@@ -1750,6 +1787,7 @@ export async function doRooftop(): Promise<void> {
   Sound.sfx('ok');
   const who = NPC_IDS[Math.floor(Math.random() * NPC_IDS.length)];
   if (Math.random() < 0.5) {
+    gainInteraction(s, who, 5);
     St.addRel(s, who, 4);
     ui.toast(`${NPCS[who].emoji} ${NPCS[who].name} dropped by. +friendship`, 'good');
   }
@@ -1790,6 +1828,175 @@ export async function doNotice(): Promise<void> {
   await ui.info(
     '📌 Notice Board',
     `<b>Today’s timetable</b><br>${timetable}<br><br><b>Coming up</b><br>${upcoming.join('<br>')}<br><br><b>Daily quests</b> (streak ${s.questStreak}🔥)<br>${quests}<br><br><b>Cohort rank this semester:</b> ${rank ? `#${rank.rank} of ${rank.total}` : 'no grades yet'}`,
+  );
+}
+
+/* ============================== people: interaction, relationship, personality ============================== */
+const signed = (n: number): string => `${n >= 0 ? '+' : '−'}${Math.abs(Math.round(n))}`;
+
+/** One line with both scores, e.g. "🤝 Interaction 40 (Familiar) · 😊 Relationship +42 (Close)". */
+export function scoreLine(s: GameState, id: PersonId): string {
+  const b = St.bondOf(s, id);
+  const rel = relationshipLabel(b.rel);
+  return `🤝 Interaction ${Math.round(b.interaction)} (${interactionLevel(b.interaction).name}) · ${rel.icon} Relationship ${signed(b.rel)} (${rel.name})`;
+}
+
+/** Add interaction points and announce it when that reveals the person's personality. */
+export function gainInteraction(s: GameState, id: PersonId, points: number): void {
+  const knew = St.knowsPersonality(s, id);
+  St.addInteraction(s, id, points);
+  if (!knew && St.knowsPersonality(s, id)) announceUnlock(id);
+}
+function announceUnlock(id: PersonId): void {
+  const p = PEOPLE[id];
+  Sound.sfx('star');
+  ui.toast(`🔓 You now know ${p.name}’s personality: ${p.personality.type}`, 'gold', 5200);
+}
+
+/** The profile card. The personality stays locked until the interaction level is reached. */
+export function profileHtml(s: GameState, id: PersonId): string {
+  const p = PEOPLE[id];
+  const b = St.bondOf(s, id);
+  const P = p.personality;
+  const body = St.knowsPersonality(s, id)
+    ? `<b>🧩 ${P.type}</b><br>${P.traits.join(' · ')}<br>${P.about}<br><br>👍 Enjoys ${P.likes.map((t) => TONE_NAME[t]).join(' and ')}.<br>👎 Dislikes ${P.dislikes.map((t) => TONE_NAME[t]).join(' and ')}.`
+    : `<b>🔒 Personality unknown</b><br>Reach ${PERSONALITY_AT} interaction points to learn it (${Math.max(0, PERSONALITY_AT - Math.round(b.interaction))} to go).`;
+  return `<i>${p.title}</i><br><br>${scoreLine(s, id)}<br><br>${body}`;
+}
+export async function showProfile(id: PersonId): Promise<void> {
+  const p = PEOPLE[id];
+  await ui.info(`${p.emoji} ${p.name}`, profileHtml(S(), id), 'Close');
+}
+
+/**
+ * A conversation where you choose how to answer. How it lands depends on the person's personality, so knowing it
+ * helps. Interaction always goes up; the relationship can go either way. Once a day per person.
+ */
+async function toneTalk(id: PersonId): Promise<Mood> {
+  const s = S();
+  const p = PEOPLE[id];
+  const b = St.bondOf(s, id);
+  const rng = mulberry32(hashStr(id) + s.day * 131 + s.period * 7);
+  const opener =
+    b.rel <= -15 ? `…Oh. It’s you. ${p.opener}` : b.rel >= 40 ? `Great to see you! ${p.opener}` : p.opener;
+  await ui.say([[p.name, opener]]);
+  const replies = replyOptions(rng);
+  const i = await ui.ask(
+    s.name,
+    'How do you reply?',
+    replies.map((r) => r.text),
+  );
+  const out = St.converse(s, id, replies[i].tone);
+  const lines = REACTIONS[out.mood];
+  await ui.say([[p.name, lines[Math.floor(rng() * lines.length)]]]);
+  const good = out.relation >= 0;
+  ui.toast(
+    `${p.name}: 🤝 Interaction +${out.interaction} · ${good ? '💚' : '💔'} Relationship ${signed(out.relation)}`,
+    good ? 'good' : 'bad',
+    3800,
+  );
+  if (out.unlocked) announceUnlock(id);
+  return out.mood;
+}
+
+async function converseWith(id: PersonId): Promise<void> {
+  const s = S();
+  if (St.bondOf(s, id).talked === s.day) {
+    await ui.say([[PEOPLE[id].name, 'We have already had a good talk today. Catch me tomorrow.']]);
+    return;
+  }
+  await toneTalk(id);
+  const r = St.addXP(s, 8);
+  St.gainStat(s, 'cha', 0.12);
+  ui.toast(`✨ +${r.n} XP`, 'good');
+  trackQuest('talk');
+  await resolvePerks();
+  await achievements();
+  refreshHud();
+}
+
+/** A professor's course among this semester's courses, if they teach you now. */
+const courseTaughtBy = (s: GameState, name: string): Course | undefined =>
+  St.courses(s)
+    .map((id) => COURSES[id])
+    .find((c) => c.prof === name);
+
+/** Ask a professor how to study: a better relationship earns a better tip, a bad one earns none. */
+async function studyTip(id: PersonId, c: Course): Promise<void> {
+  const s = S();
+  const rel = St.bondOf(s, id).rel;
+  if (s.profDay[c.id] === s.day) {
+    await ui.say([[c.prof, 'We covered that today. Save some questions for office hours!']]);
+    return;
+  }
+  s.profDay[c.id] = s.day;
+  gainInteraction(s, id, 5);
+  if (rel <= -15) {
+    await ui.say([[c.prof, 'I suggest you read the syllabus. We have little else to discuss.']]);
+    return;
+  }
+  const m = St.addMastery(s, c.area, rel >= 40 ? 2.6 : 1.6);
+  St.addXP(s, 10);
+  await ui.say([
+    [
+      c.prof,
+      rel >= 40
+        ? `Between us: for ${c.name}, work the old problems first. I will even mark one for you.`
+        : 'Do a few practice questions every day. Little and often beats cramming.',
+    ],
+  ]);
+  ui.toast(`${SUBJECTS[c.area].icon} Study tip: mastery +${m.toFixed(1)}`, 'good');
+}
+
+/** Talk to anybody. Friends have their own menu; professors can also give study tips. */
+export async function talkPerson(id: PersonId): Promise<void> {
+  const s = S();
+  const p = PEOPLE[id];
+  if (!p) return;
+  if (p.role === 'friend') {
+    await talkTo(id as NpcId);
+    return;
+  }
+  const course = p.role === 'professor' ? courseTaughtBy(s, p.name) : undefined;
+  const b = St.bondOf(s, id);
+  const options = [
+    {
+      icon: '💬',
+      label: 'Chat',
+      sub:
+        b.talked === s.day
+          ? 'You already chatted today'
+          : 'Once per day · your answer can help or hurt the relationship',
+      tag: b.talked === s.day ? 'done' : 'new',
+    },
+    { icon: '📇', label: 'View Profile', sub: 'Scores and personality', tag: '' },
+    ...(course
+      ? [{ icon: '📚', label: 'Ask for a Study Tip', sub: `${course.name} · once a day`, tag: '' }]
+      : []),
+  ];
+  const i = await ui.choice({
+    title: `${p.emoji} ${p.name}`,
+    sub: `${p.title}<br>${scoreLine(s, id)}`,
+    options,
+  });
+  if (i === 0) await converseWith(id);
+  else if (i === 1) await showProfile(id);
+  else if (i === 2 && course) await studyTip(id, course);
+  refreshHud();
+}
+
+/** How a graded lecture or exam changes things with its professor. */
+function professorReacts(s: GameState, c: Course, pct: number, weight = 1): void {
+  const id = professorId(c.prof);
+  if (!id) return;
+  gainInteraction(s, id, 5 * weight);
+  const delta = pct >= 0.85 ? 3 * weight : pct < 0.5 ? -3 * weight : 0;
+  if (!delta) return;
+  const d = St.addRel(s, id, delta);
+  ui.toast(
+    `${delta > 0 ? '💚' : '💔'} ${c.prof} ${delta > 0 ? 'is impressed' : 'is disappointed'}: relationship ${signed(d)}`,
+    delta > 0 ? 'good' : 'bad',
+    3600,
   );
 }
 
@@ -1841,12 +2048,12 @@ export async function talkTo(npc: NpcId): Promise<void> {
   const canGift = f.gift !== s.day && ((s.items.snack ?? 0) > 0 || (s.items.drink ?? 0) > 0);
   const i = await ui.choice({
     title: `${N.emoji} ${N.name}`,
-    sub: `${relationText(s, npc)}<br>${N.role} · ${N.major} · Friendship ${Math.round(f.rel)}/100${beat ? ` (next story at ${beat.at})` : ''}`,
+    sub: `${relationText(s, npc)}<br>${N.role} · ${N.major}<br>${scoreLine(s, npc)}${beat ? `<br>Next story at relationship ${beat.at}` : ''}`,
     options: [
       {
         icon: '💬',
         label: 'Chat',
-        sub: f.talked === s.day ? 'You already chatted today' : 'Once per day · builds friendship',
+        sub: f.talked === s.day ? 'You already chatted today' : 'Once per day · your answer can help or hurt',
         tag: f.talked === s.day ? 'done' : 'new',
       },
       {
@@ -1859,10 +2066,12 @@ export async function talkTo(npc: NpcId): Promise<void> {
             : 'You have no snacks or drinks',
         disabled: !canGift,
       },
+      { icon: '📇', label: 'View Profile', sub: 'Scores and personality' },
     ],
   });
   if (i === 0) await chat(npc);
   else if (i === 1) await giveGift(npc);
+  else if (i === 2) await showProfile(npc);
 }
 
 async function chat(npc: NpcId): Promise<void> {
@@ -1875,22 +2084,46 @@ async function chat(npc: NpcId): Promise<void> {
     ]);
     return;
   }
-  // Every other chat is about being a senior, peer or junior; the rest are the friend's own lines.
   const rel = St.relationTo(s, npc);
-  const pickN = s.day + npc.length;
-  const T =
-    pickN % 2 === 0
-      ? RELATION_TALK[rel][(s.day + f.story) % RELATION_TALK[rel].length]
-      : N.talk[pickN % N.talk.length];
-  await ui.say([[N.name, T.line]]);
-  const i = await ui.ask(s.name, 'How do you reply?', [T.a, T.b]);
-  await ui.say([[N.name, i === 0 ? T.ra : T.rb]]);
-  f.talked = s.day;
-  const d = St.addRel(s, npc, i === 0 ? 6 : 5);
-  if (i === 1) St.addStress(s, -4);
+  // Every third day the chat turns on how you answer them (their personality decides how it lands). Otherwise it
+  // is one of the friend's own lines, or one about being a senior, peer or junior.
+  let wentWell = true;
+  if ((s.day + npc.length) % 3 === 0) {
+    const mood = await toneTalk(npc);
+    wentWell = mood === 'liked' || mood === 'fine';
+    if (wentWell) St.addXP(s, 10);
+  } else {
+    const pickN = s.day + npc.length;
+    const T =
+      pickN % 2 === 0
+        ? RELATION_TALK[rel][(s.day + f.story) % RELATION_TALK[rel].length]
+        : N.talk[pickN % N.talk.length];
+    await ui.say([[N.name, T.line]]);
+    const brushOff = REPLIES.dismissive[pickN % REPLIES.dismissive.length];
+    const i = await ui.ask(s.name, 'How do you reply?', [T.a, T.b, brushOff]);
+    f.talked = s.day;
+    gainInteraction(s, npc, 10);
+    if (i === 2) {
+      wentWell = false;
+      await ui.say([[N.name, REACTIONS.rude[pickN % REACTIONS.rude.length]]]);
+      const d = St.addRel(s, npc, -10);
+      ui.toast(`${N.name}: 🤝 Interaction +10 · 💔 Relationship ${signed(d)}`, 'bad', 3800);
+    } else {
+      await ui.say([[N.name, i === 0 ? T.ra : T.rb]]);
+      const d = St.addRel(s, npc, i === 0 ? 6 : 5);
+      if (i === 1) St.addStress(s, -4);
+      const r = St.addXP(s, 10);
+      ui.toast(`${N.name}: 🤝 Interaction +10 · 💚 Relationship ${signed(d)} · ✨ +${r.n} XP`, 'good', 3800);
+    }
+  }
   St.gainStat(s, 'cha', 0.2);
-  const r = St.addXP(s, 10);
-  ui.toast(`💖 ${N.name} +${Math.round(d)} · ✨ +${r.n} XP`, 'good');
+  if (!wentWell) {
+    trackQuest('talk');
+    await resolvePerks();
+    await achievements();
+    refreshHud();
+    return;
+  }
   if (rel === 'senior') {
     // An older student shares what they have learned about one of this semester's subjects.
     const ids = St.courses(s);
@@ -1930,6 +2163,7 @@ async function giveGift(npc: NpcId): Promise<void> {
   const k = options[i];
   s.items[k] = (s.items[k] ?? 1) - 1;
   f.gift = s.day;
+  gainInteraction(s, npc, 10);
   const d = St.addRel(s, npc, k === 'snack' ? 10 : 12);
   Sound.sfx('star');
   ui.confetti(innerWidth / 2, innerHeight / 2, 25);
@@ -1941,7 +2175,7 @@ async function giveGift(npc: NpcId): Promise<void> {
         : 'An energy drink! You’re a lifesaver!',
     ],
   ]);
-  ui.toast(`🎁 ${N.name} +${Math.round(d)} friendship`, 'good');
+  ui.toast(`🎁 ${N.name}: 🤝 Interaction +10 · 💚 Relationship ${signed(d)}`, 'good');
   await achievements();
   refreshHud();
 }

@@ -1,7 +1,7 @@
 // Full-screen flows: title menu, help, settings and the character creator.
 import { Sound } from '../audio/sound';
-import { DEFAULT_NAME } from '../core/state';
-import type { Accessory, Look, Meta, Unlocks } from '../core/types';
+import { GENDERS, defaultName } from '../core/state';
+import type { Accessory, Gender, Look, Meta, Unlocks } from '../core/types';
 import { hexCss } from '../core/util';
 import { ACCESSORIES, BAGS, BLAZERS, HAIR_COLORS, HAIR_STYLES, SKINS } from '../render/characters';
 import { $, el, esc } from './dom';
@@ -47,7 +47,7 @@ export function helpScreen(): Promise<void> {
     🍜 <b>The canteen is a real room.</b> Walk in, order at the hot-food counter, carry your tray to a table and sit down to eat (lunch uses the period). Friends eat there too, so sit near them! The store and vending machines are open all day.<br>
     🎭 <b>The Club House</b> holds five clubs: chess, music, dance, debate and sports, each in its own themed room. Joining is <b>mandatory</b>: every semester you register for <b>one or two</b> clubs (never more) and must attend. Sessions are mini-games that raise your stats and earn coins.<br>
     ⚡ <b>Energy & stress</b> matter: tired students answer slower. Eat, relax on the rooftop and sleep.<br>
-    💬 <b>Friends</b> unlock story scenes and permanent bonuses. Gifts help!<br>
+    💬 <b>Talk to anyone.</b> All 71 people, students, professors and staff, have their own personality. Every conversation raises your <b>Interaction</b> points (which only go up). How you answer moves your <b>Relationship</b> up or down. At 30 interaction points you learn their personality, so you know what they like. Friends also unlock story scenes and permanent bonuses; gifts help!<br>
     ⭐ Explore! Gold stars and cats are hidden around campus.<br><br>
     <b>Controls:</b> WASD/arrows move · Shift run · E interact · drag or Q/Z rotate camera · scroll zoom · J journal · M mute. On touch: joystick + button.`,
     'Got It!',
@@ -107,6 +107,7 @@ export interface CreatorConfig {
   look: Look;
   unlocks: Unlocks;
   name: string;
+  gender: Gender;
   onChange(look: Look): void;
 }
 
@@ -115,7 +116,9 @@ export function creatorScreen({
   unlocks,
   onChange,
   name,
-}: CreatorConfig): Promise<{ name: string; look: Look }> {
+  gender: firstGender,
+}: CreatorConfig): Promise<{ name: string; look: Look; gender: Gender }> {
+  let gender = firstGender;
   const host = $('#screens');
   host.innerHTML = '';
   const wrap = el('div', 'title-screen creator');
@@ -123,7 +126,8 @@ export function creatorScreen({
   wrap.appendChild(card);
   host.appendChild(wrap);
   card.innerHTML = `<h2>Create your student</h2><div class="sub">Pick a look. You can change it later in the Journal wardrobe.</div>
-    <div class="field">Name</div><input class="txt" id="c-name" maxlength="14" value="${esc(name)}" aria-label="Name">
+    <div class="field">Gender</div><div id="c-gender"></div>
+    <div class="field">Name</div><input class="txt" id="c-name" maxlength="14" value="${esc(name || defaultName(gender))}" aria-label="Name">
     <div class="field">Skin</div><div id="c-skin"></div><div class="field">Hair style</div><div id="c-hs"></div><div class="field">Hair colour</div><div id="c-hc"></div>
     <div class="field">Blazer</div><div id="c-bl"></div><div class="field">Backpack</div><div id="c-bg"></div><div class="field">Accessory</div><div id="c-ac"></div>
     <div class="btnrow crfoot"><button class="btn small" id="c-rand">🎲 Random</button><button class="btn primary" id="c-go">Start Year ▶</button></div>`;
@@ -169,6 +173,25 @@ export function creatorScreen({
       h.appendChild(c);
     }
   };
+  // Picking a gender changes the default name; a name you typed yourself is left alone.
+  const genderChips = () => {
+    const h = $('#c-gender', card);
+    h.innerHTML = '';
+    for (const g of GENDERS) {
+      const c = el('span', 'chipbtn clickable' + (gender === g.id ? ' on' : ''), g.name);
+      c.dataset.gender = g.id;
+      c.onclick = () => {
+        const input = $<HTMLInputElement>('#c-name', card);
+        const typed = input.value.trim();
+        const untouched = !typed || GENDERS.some((o) => o.defaultName === typed);
+        gender = g.id;
+        if (untouched) input.value = defaultName(gender);
+        Sound.sfx('click');
+        genderChips();
+      };
+      h.appendChild(c);
+    }
+  };
   const capital = (s: string) => s[0].toUpperCase() + s.slice(1);
   const render = () => {
     swatches('#c-skin', SKINS, 'skin');
@@ -187,11 +210,12 @@ export function creatorScreen({
     );
   };
   render();
+  genderChips();
   onChange(look);
   const nameInput = $<HTMLInputElement>('#c-name', card);
   // Clicking the untouched default selects it, so typing replaces it.
   nameInput.onclick = () => {
-    if (nameInput.value === DEFAULT_NAME) nameInput.select();
+    if (nameInput.value === defaultName(gender)) nameInput.select();
   };
 
   return new Promise((resolve) => {
@@ -208,9 +232,9 @@ export function creatorScreen({
       onChange(look);
     };
     $('#c-go', card).onclick = () => {
-      const n = nameInput.value.trim() || DEFAULT_NAME;
+      const n = nameInput.value.trim() || defaultName(gender);
       Sound.sfx('ok');
-      resolve({ name: n, look });
+      resolve({ name: n, look, gender });
     };
     wireSfx(card);
   });

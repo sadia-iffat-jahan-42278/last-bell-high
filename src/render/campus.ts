@@ -8,7 +8,7 @@ import {
   BUILDINGS,
   CATS,
   CROWD_POINTS,
-  HANGOUTS,
+  GATHERING_SPOTS,
   NOTICE,
   PLAZA,
   ROOF_STAIRS,
@@ -491,8 +491,7 @@ export function buildCampusGeometry() {
       )
         return false;
     }
-    for (const h of Object.values(HANGOUTS))
-      for (const p of Object.values(h)) if (Math.hypot(x - p[0], z - p[1]) < 3.2) return false;
+    for (const p of GATHERING_SPOTS) if (Math.hypot(x - p[0], z - p[1]) < 3.2) return false;
     for (const p of [...STARS, ...CATS, ...CROWD_POINTS])
       if (Math.hypot(x - p[0], z - p[1]) < 2.4) return false;
     for (const zn of Object.values(ZONES)) if (Math.hypot(x - zn.x, z - zn.z) < 4) return false;

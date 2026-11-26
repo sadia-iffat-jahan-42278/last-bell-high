@@ -43,6 +43,8 @@ export interface FloorExtras {
   /** Floor height under (x, z): stairs rise to +4 (up flight) and sink to -4 (down flight). */
   floorY: (x: number, z: number) => number;
   people: Person[];
+  /** Where people may stroll: the corridor without the stairs. */
+  walk: Bounds;
 }
 
 /** Someone (a classmate or a friend) who stands, sits, dances or plays somewhere in a club room. */
@@ -264,10 +266,7 @@ function build(
     for (let i = 0; i < 4; i++)
       box(-bw / 2 + 1 + i * 0.9, 2.2 - (i % 2) * 0.5, -d / 2 + 0.17, 0.5, 0.05, 0.02, 0x4a78d6);
   };
-  const addProf = (x: number, z: number): Seat => {
-    post(x, z, 0.5);
-    return { x: ox + x, z: oz + z, yaw: 0 };
-  };
+  const addProf = (x: number, z: number): Seat => ({ x: ox + x, z: oz + z, yaw: 0 });
   const world = (x: number, z: number, yaw: number): Seat => ({ x: ox + x, z: oz + z, yaw });
   let prof: Seat;
   let playerSeat = 0;

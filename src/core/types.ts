@@ -160,7 +160,24 @@ export interface TermRecord {
   final: ScoreList;
 }
 
+export type Gender = 'female' | 'male' | 'nonbinary';
+/** Anyone in the cast: a friend's `NpcId`, or `s_…` (student), `p_…` (professor), `x_…` (staff). */
+export type PersonId = string;
+
+/** The two scores you have with every person. */
+export interface Bond {
+  /** Interaction points: how much you have had to do with them. Only ever grows. */
+  interaction: number;
+  /** Relationship points, from -100 (hostile) to +100 (devoted). */
+  rel: number;
+  /** Day of your last conversation. */
+  talked: number;
+}
+
 export interface FriendState {
+  /** Interaction points (only ever grows). */
+  interaction: number;
+  /** Relationship points, from -100 to +100. */
   rel: number;
   story: number;
   talked: number;
@@ -195,6 +212,7 @@ export interface Unlocks {
 export interface GameState {
   v: 2;
   name: string;
+  gender: Gender;
   look: Look;
   day: number;
   period: number;
@@ -218,6 +236,8 @@ export interface GameState {
   seenQ: Record<string, number[]>;
   showcase: { term: number; club: ClubId; place: LetterGrade }[];
   friends: Record<NpcId, FriendState>;
+  /** Your two scores with everyone who is not one of the sixteen friends. */
+  people: Record<PersonId, Bond>;
   items: Partial<Record<ItemId, number>>;
   stars: number[];
   cats: number[];

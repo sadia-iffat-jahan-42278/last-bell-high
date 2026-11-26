@@ -2,8 +2,19 @@
 import './style.css';
 import { Sound } from './audio/sound';
 import { COURSES, FINALS, NPCS, SUBJECTS } from './core/data';
+import { PEOPLE } from './core/people';
 import * as St from './core/state';
-import { beginDay, buildingInteractions, game, refreshHud, resume, save, talkTo, petCat } from './game';
+import {
+  beginDay,
+  buildingInteractions,
+  game,
+  refreshHud,
+  resume,
+  save,
+  talkPerson,
+  talkTo,
+  petCat,
+} from './game';
 import * as GameApi from './game';
 import { Input } from './input';
 import { openJournal } from './journal';
@@ -86,7 +97,7 @@ function openMenu(): Promise<void> {
 async function interact(): Promise<void> {
   const t = scene.target;
   if (!t || !canAct()) return;
-  if (t.kind !== 'npc' && t.kind !== 'cat' && !t.info.enabled) {
+  if (t.kind !== 'npc' && t.kind !== 'person' && t.kind !== 'cat' && !t.info.enabled) {
     ui.toast(t.info.why || 'Not available right now.', 'bad');
     Sound.sfx('wrong');
     return;
@@ -99,7 +110,8 @@ async function interact(): Promise<void> {
     } else if (t.kind === 'npc') {
       scene.npcActor(t.id).c.wave(1.2);
       await talkTo(t.id);
-    } else if (t.kind === 'cat') await petCat(t.i);
+    } else if (t.kind === 'person') await talkPerson(t.id);
+    else if (t.kind === 'cat') await petCat(t.i);
     else {
       // Inside a classroom: sit at your seat, talk to the professor or leave by the door.
       if (t.kind === 'exit') Sound.sfx('door');
@@ -173,7 +185,8 @@ async function newGameFlow(): Promise<void> {
   scene.setPeriod(2, true);
   const res = await creatorScreen({
     look,
-    name: St.DEFAULT_NAME,
+    name: St.defaultName('female'),
+    gender: 'female',
     unlocks: {
       hair: [0, 1, 2, 3],
       blazer: [0, 1, 2, 3],
@@ -183,7 +196,7 @@ async function newGameFlow(): Promise<void> {
     onChange: (l) => scene.playerChar.setLook(l),
   });
   await exclusive(async () => {
-    const s = St.newState(res.name, res.look, meta);
+    const s = St.newState(res.name, res.look, meta, res.gender);
     game.s = s;
     ui.portraits[s.name] = { emoji: '🙂', color: '#4aa8ff' };
     ui.clearScreens();
@@ -223,6 +236,8 @@ function boot(): void {
     'Club Captain': { emoji: '📣', color: '#ff7a59' },
     You: { emoji: '🙂', color: '#4aa8ff' },
   });
+  const roleColour = { friend: '#4aa8ff', student: '#4aa8ff', professor: '#9b6bff', staff: '#ff9a3c' };
+  for (const p of Object.values(PEOPLE)) ui.portraits[p.name] = { emoji: p.emoji, color: roleColour[p.role] };
   for (const N of Object.values(NPCS)) ui.portraits[N.name] = { emoji: N.emoji, color: N.color };
   for (const F of FINALS) ui.portraits[F.name] = { emoji: F.emoji, color: F.color };
   for (const c of Object.values(COURSES))

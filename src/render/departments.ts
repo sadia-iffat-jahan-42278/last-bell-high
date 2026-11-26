@@ -209,6 +209,8 @@ export function buildFloor(dept: ClassBuilding, variant: FloorVariant, at: [numb
     stairSign: { x: k.ox + STAIR_X0 - 2.6, z: k.oz },
     floorY,
     people,
+    // everything east of the stair alcove
+    walk: { ...base.bounds, x0: k.ox + STAIR_X0 + 0.8 },
   };
   return {
     ...base,

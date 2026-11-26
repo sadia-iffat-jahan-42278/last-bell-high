@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { buildCampusGeometry } from '../src/render/campus';
 import { resolveCollisions, type Collider } from '../src/world/collision';
-import { BOUNDS, BUILDINGS, CATS, CROWD_POINTS, HANGOUTS, START, STARS, ZONES } from '../src/world/layout';
+import {
+  BOUNDS,
+  BUILDINGS,
+  CATS,
+  CROWD_POINTS,
+  GATHERING_SPOTS,
+  START,
+  STARS,
+  ZONES,
+} from '../src/world/layout';
 import { lightAt } from '../src/world/lighting';
 
 const campus = buildCampusGeometry();
@@ -81,14 +90,13 @@ describe('interaction spots are reachable', () => {
     }
   });
   it('the player can get in range of every friend, star and cat', () => {
-    for (const [id, h] of Object.entries(HANGOUTS)) {
-      expect(reachable(campus.colliders, h.lunch[0], h.lunch[1], 2.4), `${id} lunch`).toBe(true);
-      expect(reachable(campus.colliders, h.after[0], h.after[1], 2.4), `${id} after`).toBe(true);
-    }
+    GATHERING_SPOTS.forEach(([x, z], i) =>
+      expect(reachable(campus.colliders, x, z, 2.4), `gathering spot ${i}`).toBe(true),
+    );
     STARS.forEach(([x, z], i) => expect(reachable(campus.colliders, x, z, 1.5), `star ${i}`).toBe(true));
     CATS.forEach(([x, z], i) => expect(reachable(campus.colliders, x, z, 2.2), `cat ${i}`).toBe(true));
   });
-  it('wandering students can arrive at every crowd waypoint (arrival radius 0.6)', () => {
+  it('every crowd waypoint is open ground', () => {
     CROWD_POINTS.forEach(([x, z], i) => {
       const p = { x, z };
       resolveCollisions(campus.colliders, p, 0.45);

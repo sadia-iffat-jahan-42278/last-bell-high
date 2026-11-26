@@ -464,6 +464,13 @@ export function staffLook(i: number): Look {
   };
 }
 
+/** A classmate's or staff member's look, derived from their id so they always look the same. */
+export function personLook(id: string): Look {
+  const look = randomLook(mulberry32(hashStr(id)));
+  if (id === 'x_security') return { ...look, blazer: 0x1f2a44, acc: 'cap', tie: 0x222222 };
+  return look;
+}
+
 export function randomLook(rng: Rng): Look {
   return {
     skin: pick(rng, SKINS),

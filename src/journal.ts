@@ -21,6 +21,18 @@ import {
   gradeOf,
   xpForLevel,
 } from './core/data';
+import {
+  PEOPLE,
+  PERSONALITY_AT,
+  PERSON_IDS,
+  PROFESSORS,
+  STAFF,
+  STUDENTS,
+  TONE_NAME,
+  interactionLevel,
+  relationshipLabel,
+  type Person,
+} from './core/people';
 import * as St from './core/state';
 import {
   NPC_IDS,
@@ -30,6 +42,7 @@ import {
   type HairStyle,
   type ItemId,
   type NpcId,
+  type PersonId,
   type StatId,
 } from './core/types';
 import { hexCss } from './core/util';
@@ -37,12 +50,13 @@ import { game, refreshHud, relationText, save } from './game';
 import { $, el, esc } from './ui/dom';
 import { ui } from './ui/ui';
 
-type TabId = 'me' | 'courses' | 'subj' | 'friends' | 'items' | 'wardrobe' | 'collect';
+type TabId = 'me' | 'courses' | 'subj' | 'friends' | 'people' | 'items' | 'wardrobe' | 'collect';
 const TABS: [TabId, string][] = [
   ['me', '🙂 Me'],
   ['courses', '🎓 Courses'],
   ['subj', '📚 Subjects'],
   ['friends', '💖 Friends'],
+  ['people', '🧑‍🤝‍🧑 People'],
   ['items', '🎒 Items'],
   ['wardrobe', '👕 Wardrobe'],
   ['collect', '⭐ Collection'],
@@ -98,6 +112,21 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
       });
       $('[data-close]', card).onclick = close;
       VIEWS[tab]($('#jbody', card));
+    };
+
+    /** The two scores with a person: Interaction (only grows) and Relationship (either way). */
+    const scores = (id: PersonId): string => {
+      const b = St.bondOf(s, id);
+      const r = relationshipLabel(b.rel);
+      const points = Math.round(b.interaction);
+      return `<div class="statrow"><span class="nm" style="width:128px;white-space:nowrap">🤝 Interaction</span>${meter(Math.min(points, PERSONALITY_AT), PERSONALITY_AT, '#4aa8ff')}<b class="wide">${points} · ${interactionLevel(points).name}</b></div><div class="statrow"><span class="nm" style="width:128px;white-space:nowrap">${r.icon} Relationship</span>${meter(Math.abs(b.rel), 100, b.rel < 0 ? '#ff6b6b' : '#2fd3a0')}<b class="wide">${b.rel > 0 ? '+' : ''}${Math.round(b.rel)} · ${r.name}</b></div>`;
+    };
+    /** Their personality, hidden until you have interacted enough. */
+    const personality = (id: PersonId): string => {
+      if (!St.knowsPersonality(s, id))
+        return `<div class="note2">🔒 Personality unknown: ${PERSONALITY_AT - Math.round(St.bondOf(s, id).interaction)} more interaction points needed</div>`;
+      const P = PEOPLE[id].personality;
+      return `<div class="note2"><b>🧩 ${P.type}</b> (${P.traits.join(', ')}). ${P.about}<br>👍 ${P.likes.map((t) => TONE_NAME[t]).join(', ')} · 👎 ${P.dislikes.map((t) => TONE_NAME[t]).join(', ')}</div>`;
     };
 
     const VIEWS: Record<TabId, (b: HTMLElement) => void> = {
@@ -187,10 +216,11 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
         const card = (id: NpcId): string => {
           const N = NPCS[id];
           const f = s.friends[id];
-          const hearts = Math.floor(f.rel / 20);
           const next = N.beats[f.story];
-          return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio"><b>${N.major}</b> · ${relationText(s, id)}<br>${N.bio}</div><div class="hearts5">${'❤️'.repeat(hearts)}${'🤍'.repeat(5 - hearts)} <small>${Math.round(f.rel)}/100</small></div>
-              <div class="story">Story: ${f.story}/3 ${next ? `· next at ${next.at}` : '· complete'}</div>${N.perks
+          // the biography is part of getting to know someone, so it unlocks with the personality
+          const bio = St.knowsPersonality(s, id) ? `<br>${N.bio}` : '';
+          return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio"><b>${N.major}</b> · ${relationText(s, id)}${bio}</div>${scores(id)}${personality(id)}
+              <div class="story">Story: ${f.story}/3 ${next ? `· next at relationship ${next.at}` : '· complete'}</div>${N.perks
                 .map(
                   (p) =>
                     `<div class="perkline" style="opacity:${f.story >= p.need ? 1 : 0.45}">${f.story >= p.need ? '✅' : '🔒'} ${p.text}</div>`,
@@ -207,6 +237,21 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
                 .join('')}</div>`,
           )
           .join('');
+      },
+
+      people(b) {
+        const group = (title: string, list: Person[]) =>
+          `<h4 class="spaced">${title}</h4><div class="grid2">${list
+            .map(
+              (p) =>
+                `<div class="box"><h4>${p.emoji} ${p.name}</h4><div class="bio">${p.title}</div>${scores(p.id)}${personality(p.id)}</div>`,
+            )
+            .join('')}</div>`;
+        b.innerHTML =
+          `<div class="hint">${PERSON_IDS.length} people make up Last Bell University, including the 16 friends on their own page. Every conversation raises Interaction; how you answer moves the Relationship up or down. A personality appears at ${PERSONALITY_AT} interaction points.</div>` +
+          group('🎓 Professors', PROFESSORS) +
+          group('🧑‍🎓 Classmates', STUDENTS) +
+          group('🧰 Staff', STAFF);
       },
 
       items(b) {

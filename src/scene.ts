@@ -10,7 +10,6 @@ import {
   type MeshLambertMaterial,
 } from 'three';
 import {
-  AFTER_PERIOD,
   CLUBS,
   DEPARTMENTS,
   EVENING_PERIOD,
@@ -22,8 +21,16 @@ import {
   courseInRoom,
 } from './core/data';
 import * as St from './core/state';
-import { CLUB_IDS, type ClubId, type Look, type NpcId, type Weather, type ZoneId } from './core/types';
-import { mulberry32, type Rng } from './core/util';
+import {
+  CLUB_IDS,
+  type ClubId,
+  type Look,
+  type NpcId,
+  type PersonId,
+  type Weather,
+  type ZoneId,
+} from './core/types';
+import { mulberry32 } from './core/util';
 import {
   buildingInteractions,
   canteenInteractions,
@@ -47,9 +54,10 @@ import {
 } from './game';
 import type { Input } from './input';
 import { createCampus, type Campus } from './render/campus';
-import { Character, NPC_LOOKS, professorLook, randomLook, staffLook } from './render/characters';
+import { Character, NPC_LOOKS, personLook, professorLook, randomLook, staffLook } from './render/characters';
 import { SH, part, setColor } from './render/parts';
 import { CLUB_COLOUR } from './render/clubhouse';
+import { PEOPLE, pickStudents, professorId } from './core/people';
 import { floorVariant } from './render/departments';
 import {
   classKey,
@@ -66,21 +74,37 @@ import { resolveCollisions } from './world/collision';
 import {
   BUILDINGS,
   CATS,
+  BOUNDS,
   CROWD_POINTS,
   GATE,
-  HANGOUTS,
+  GATHERING_SPOTS,
   ROOF_STAIRS,
+  STAFF_SPOTS,
   START,
   STARS,
   ZONES,
 } from './world/layout';
 import { lightAt } from './world/lighting';
+import {
+  headCount,
+  newWanderer,
+  randInt,
+  randomSpot,
+  separate,
+  shuffle,
+  stepWanderer,
+  type Busyness,
+  type Keep,
+  type WanderArea,
+  type Wanderer,
+} from './world/wander';
 
 export type Mode = 'boot' | 'title' | 'creator' | 'play';
 
 export type Target =
   | { kind: 'building'; id: ZoneId; info: Interaction }
   | { kind: 'npc'; id: NpcId }
+  | { kind: 'person'; id: PersonId }
   | { kind: 'cat'; i: number }
   | {
       kind: 'seat' | 'exit' | 'prof' | 'order' | 'store' | 'vending' | 'door' | 'desk' | 'play';
@@ -107,6 +131,12 @@ const isMemberOf = (c: ClubId): boolean => !!game.s && St.isMember(game.s, c);
 const ROOM_PITCH = 0.85;
 const ROOM_DIST = 6.5;
 const CLASSMATES = 16;
+/** The most students who can be out on campus at once. */
+const CROWD = 14;
+/** Someone walking stops, and turns to you, when you come this close. */
+const ATTEND = 2.4;
+/** ...and waits this many seconds for you to say something before carrying on, unless you are facing a prompt for them. */
+const PATIENCE = 8;
 
 interface NpcActor {
   id: NpcId;
@@ -117,14 +147,35 @@ interface NpcActor {
   /** Floor height (stage, bleachers) when the friend is indoors. */
   y: number;
 }
-interface CrowdActor {
+/** A character who is walking about at the moment. */
+interface Walker {
   c: Character;
-  x: number;
-  z: number;
-  tx: number;
-  tz: number;
-  wait: number;
-  rng: Rng;
+  w: Wanderer;
+  area: WanderArea;
+  /** Pose while standing still (or all the time, for dancers). */
+  idle: 'none' | 'dance' | 'play';
+  /** Set for friends, so their name tag, map dot and prompt follow them. */
+  npc?: NpcActor;
+  /** Set for staff with a fixed role outdoors. */
+  staff?: { id: PersonId; x: number; z: number };
+  floorY?: (x: number, z: number) => number;
+  attend: number;
+  /** How long the player has been standing next to them. */
+  waited: number;
+  /** The way they face while standing and nobody is near (the professor faces the class). */
+  rest?: number;
+}
+interface WalkOptions {
+  speed?: number;
+  idle?: Walker['idle'];
+  npc?: NpcActor;
+  staff?: Walker['staff'];
+  floorY?: Walker['floorY'];
+  attend?: number;
+  pause?: [number, number];
+  rest?: number;
+  /** Start here instead of somewhere random. */
+  at?: { x: number; z: number };
 }
 interface StarActor {
   root: Group;
@@ -201,7 +252,11 @@ export class Scene3D implements SceneHooks {
 
   private readonly campus: Campus;
   private readonly npcs = {} as Record<NpcId, NpcActor>;
-  private readonly crowd: CrowdActor[] = [];
+  /** Background students out on campus. */
+  private readonly crowd: Character[] = [];
+  /** Who is walking about outside, and in the room the player is in. */
+  private readonly outdoorWalkers = new Map<Character, Walker>();
+  private readonly indoorWalkers = new Map<Character, Walker>();
   private readonly stars: StarActor[] = [];
   private readonly cats: CatActor[] = [];
   private readonly rings = {} as Record<ZoneId, Mesh>;
@@ -214,6 +269,10 @@ export class Scene3D implements SceneHooks {
   private trayOn = false;
   private readonly professor: Character;
   private readonly classmates: Character[] = [];
+  /** Which member of the cast each background character is being right now. */
+  private readonly who = new Map<Character, PersonId>();
+  /** Staff standing about on campus. */
+  private readonly outdoor: { id: PersonId; c: Character; x: number; z: number }[] = [];
   private readonly seatRing: Mesh;
   private readonly exitRing: Mesh;
   /** Set while the player is inside a classroom. */
@@ -287,11 +346,18 @@ export class Scene3D implements SceneHooks {
     this.view.scene.add(this.seatRing, this.exitRing);
 
     const rng = mulberry32(5);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < CROWD; i++) {
       const c = new Character(randomLook(rng));
       c.root.visible = false;
-      const [x, z] = CROWD_POINTS[i];
-      this.crowd.push({ c, x, z, tx: x, tz: z, wait: rng() * 3, rng: mulberry32(i + 40) });
+      this.crowd.push(c);
+      this.view.scene.add(c.root);
+    }
+    for (const spot of STAFF_SPOTS) {
+      const look = spot.id === 'x_dean' ? professorLook(PEOPLE[spot.id].name) : personLook(spot.id);
+      const c = new Character(look);
+      c.root.visible = false;
+      c.root.position.set(spot.x, 0, spot.z);
+      this.outdoor.push({ id: spot.id, c, x: spot.x, z: spot.z });
       this.view.scene.add(c.root);
     }
     this.buildStars();
@@ -339,26 +405,158 @@ export class Scene3D implements SceneHooks {
     this.placeActors(p, true);
   }
 
-  /** Show friends and the wandering crowd for the current period. `reset` also puts the crowd on fresh waypoints. */
+  /** Show everyone who is out on campus. `reset` (a new period) decides afresh who that is and where. */
   private placeActors(p: number, reset: boolean): void {
-    const s = game.s;
+    if (reset) this.populateCampus(p);
     for (const n of Object.values(this.npcs)) {
-      const spot = this.npcSpot(n.id);
-      n.c.root.visible = !!spot && !this.room;
-      if (spot) {
-        [n.x, n.z] = spot;
-        n.greeted = false;
-      }
+      const a = this.outdoorWalkers.get(n.c);
+      n.c.root.visible = !!a && !this.room;
+      if (!a) continue;
+      this.settle(a);
+      n.greeted = false;
     }
-    const crowdVisible = !!(s && St.isFreeKind(St.periodKind(s)) && p < EVENING_PERIOD) && !this.room;
+    for (const c of this.crowd) c.root.visible = this.outdoorWalkers.has(c) && !this.room;
+  }
+
+  /** How full the campus is in period `p`. */
+  private busyness(p: number): Busyness {
+    if (p >= EVENING_PERIOD) return 'late';
+    const s = game.s;
+    return !s || St.isFreeKind(St.periodKind(s)) ? 'busy' : 'quiet';
+  }
+
+  /** A random number of students, the friends who are around, and the staff, all somewhere new. */
+  private populateCampus(p: number): void {
+    const walkers = this.outdoorWalkers;
+    walkers.clear();
+    const rng = Math.random;
+    const campus: WanderArea = {
+      colliders: this.campus.colliders,
+      bounds: BOUNDS,
+      body: 0.45,
+      // nobody loiters in a doorway or where the player appears
+      avoid: [...Object.values(ZONES).map((z) => ({ x: z.x, z: z.z, r: 2.6 })), { ...START, r: 3.5 }],
+    };
+    const places = [...GATHERING_SPOTS, ...CROWD_POINTS];
+    const near = ([x, z]: [number, number], radius: number): WanderArea => ({
+      ...campus,
+      home: { x, z },
+      radius,
+    });
+
+    for (const n of Object.values(this.npcs)) {
+      if (!this.friendOutside(n.id)) continue;
+      // friends stay around one part of campus for the whole period
+      const place = places[Math.floor(rng() * places.length)];
+      this.walk(walkers, n.c, near(place, 6), { npc: n });
+    }
+    const count = headCount('campus', this.busyness(p), rng);
+    const students = pickStudents(rng, count);
     this.crowd.forEach((c, i) => {
-      c.c.root.visible = crowdVisible;
-      if (crowdVisible && reset) {
-        const [x, z] = CROWD_POINTS[(i * 2 + p) % CROWD_POINTS.length];
-        c.x = c.tx = x;
-        c.z = c.tz = z;
-        c.wait = 1 + i * 0.3;
+      if (i >= students.length) return;
+      this.cast(c, students[i]);
+      // many start in the popular places, the rest anywhere at all
+      const place = places[Math.floor(rng() * places.length)];
+      const at = rng() < 0.6 ? randomSpot(near(place, 4), rng, this.positions(walkers)) : null;
+      this.walk(walkers, c, campus, { at: at ?? undefined });
+    });
+    STAFF_SPOTS.forEach((spot, i) => {
+      const o = this.outdoor[i];
+      this.walk(walkers, o.c, near([spot.x, spot.z], spot.r), { staff: o, speed: 1.1, pause: [2, 8] });
+    });
+  }
+
+  private friendOutside(id: NpcId): boolean {
+    const s = game.s;
+    if (!s) return false;
+    return St.isFreeKind(St.periodKind(s)) && s.period < EVENING_PERIOD && St.npcPresent(s, id);
+  }
+
+  private positions(walkers: Map<Character, Walker>): { x: number; z: number }[] {
+    return [...walkers.values()].map((a) => a.w);
+  }
+
+  /** Set a character walking about `area`, starting somewhere random in it. */
+  private walk(walkers: Map<Character, Walker>, c: Character, area: WanderArea, o: WalkOptions = {}): void {
+    const rng = Math.random;
+    const at = o.at ??
+      randomSpot(area, rng, this.positions(walkers), 1.1) ??
+      area.home ?? { x: this.player.x, z: this.player.z };
+    const a: Walker = {
+      c,
+      w: newWanderer(at, o.speed ?? 1.2 + rng() * 0.8, rng, o.pause),
+      area,
+      idle: o.idle ?? 'none',
+      npc: o.npc,
+      staff: o.staff,
+      floorY: o.floorY,
+      attend: o.attend ?? ATTEND,
+      waited: 0,
+      rest: o.rest,
+    };
+    walkers.set(c, a);
+    c.setSeated(false);
+    c.setActivity(a.idle);
+    c.yaw = o.rest ?? rng() * Math.PI * 2;
+    c.root.rotation.y = c.yaw;
+    c.root.visible = true;
+    this.settle(a);
+  }
+
+  /** Put a walker's model (and whatever follows it) where the walker is. */
+  private settle(a: Walker): void {
+    const { x, z } = a.w;
+    const y = a.floorY?.(x, z) ?? 0;
+    a.c.root.position.set(x, y, z);
+    if (a.npc) {
+      a.npc.x = x;
+      a.npc.z = z;
+      a.npc.y = y;
+    }
+    if (a.staff) {
+      a.staff.x = x;
+      a.staff.z = z;
+    }
+  }
+
+  /** Is the current prompt about this person? */
+  private isTarget(a: Walker): boolean {
+    const t = this.target;
+    if (t?.kind === 'npc') return t.id === a.npc?.id;
+    if (t?.kind === 'prof') return a.c === this.professor;
+    return t?.kind === 'person' && t.id === (a.staff?.id ?? this.who.get(a.c));
+  }
+
+  /** Move everyone who is on their feet: stroll, stop to talk to the player, and get out of each other's way. */
+  private moveWalkers(walkers: Map<Character, Walker>, dt: number): void {
+    const { player, time } = this;
+    const active = [...walkers.values()].filter((a) => a.c.root.visible);
+    // while a conversation or menu is open, whoever stopped for you stays put
+    const talking = this.isBlocked();
+    const speeds = active.map((a) => {
+      if (!talking) {
+        const near = this.mode === 'play' && Math.hypot(player.x - a.w.x, player.z - a.w.z) < a.attend;
+        a.waited = near ? a.waited + dt : 0;
+        a.w.held = near && (a.waited < PATIENCE || this.isTarget(a));
       }
+      return stepWanderer(a.w, a.area, Math.random, dt);
+    });
+    separate(active);
+    active.forEach((a, i) => {
+      this.settle(a);
+      const dx = player.x - a.w.x;
+      const dz = player.z - a.w.z;
+      const d = Math.hypot(dx, dz);
+      const speed = speeds[i];
+      if (speed > 0) a.c.faceDir(a.w.tx - a.w.x, a.w.tz - a.w.z, dt, 8);
+      else if (this.mode === 'play' && d < (a.w.held ? a.attend : 4)) a.c.faceDir(dx, dz, dt, 5);
+      else if (a.rest !== undefined) a.c.faceDir(Math.sin(a.rest), Math.cos(a.rest), dt, 4);
+      if (a.npc && d < 6 && !a.npc.greeted && this.mode === 'play') {
+        a.npc.greeted = true;
+        a.c.wave(1.4);
+      }
+      // dancers keep dancing as they drift about
+      a.c.update(dt, a.idle === 'dance' ? 0 : speed * 2.2, time + i);
     });
   }
 
@@ -389,37 +587,47 @@ export class Scene3D implements SceneHooks {
     this.playerChar.setSeated(false);
     this.playerChar.yaw = 0;
 
-    this.professor.setLook(professorLook(spec.prof));
-    this.professor.setSeated(false);
-    const pp = interior.prof;
-    this.professor.root.position.set(pp.x, 0, pp.z);
-    this.professor.yaw = pp.yaw;
-    this.professor.root.rotation.y = pp.yaw;
-    this.professor.root.visible = true;
+    // keep people from stopping by the door or on the player's chair
+    const mine = interior.seats[interior.playerSeat];
+    const avoid: Keep[] = [
+      { ...interior.door, r: 2.2 },
+      { ...interior.spawn, r: 2.2 },
+      { x: mine.x, z: mine.z, r: 1.4 },
+    ];
+    const area: WanderArea = { colliders: interior.colliders, bounds: interior.bounds, body: 0.36, avoid };
+    const rng = Math.random;
 
-    // Classmates fill most of the other seats, chosen and dressed from the room's seed.
-    const rng = mulberry32(spec.seed);
-    const free = interior.seats.map((_, i) => i).filter((i) => i !== interior.playerSeat);
-    for (let i = free.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [free[i], free[j]] = [free[j], free[i]];
-    }
-    const count = Math.min(CLASSMATES, Math.ceil(free.length * 0.7));
+    // the professor paces about at the front
+    this.professor.setLook(professorLook(spec.prof));
+    const pp = interior.prof;
+    this.walk(
+      this.indoorWalkers,
+      this.professor,
+      { ...area, home: pp, radius: 2.2 },
+      { at: pp, speed: 0.8, pause: [2, 7], rest: pp.yaw },
+    );
+
+    // A different number of students each time: some already seated, a few still on their feet.
+    const free = shuffle(
+      interior.seats.map((_, i) => i).filter((i) => i !== interior.playerSeat),
+      rng,
+    );
+    const standing = headCount('latecomers', 'busy', rng);
+    const most = Math.min(CLASSMATES - standing, Math.round(free.length * 0.9));
+    const seated = randInt(rng, Math.min(most, Math.round(free.length * 0.35)), most);
+    const students = pickStudents(rng, this.classmates.length);
     this.classmates.forEach((c, i) => {
-      if (i >= count) {
+      if (i >= seated + standing) {
         c.root.visible = false;
         return;
       }
-      const seat = interior.seats[free[i]];
-      c.setLook(randomLook(mulberry32(spec.seed + i * 977)));
-      c.setSeated(true);
-      c.root.position.set(seat.x, 0, seat.z);
-      c.yaw = seat.yaw;
-      c.root.rotation.y = seat.yaw;
-      c.root.visible = true;
+      this.cast(c, students[i]);
+      if (i < seated) {
+        this.room!.occupied.add(free[i]);
+        this.seatAt(c, interior.seats[free[i]]);
+      } else this.walk(this.indoorWalkers, c, area);
     });
-    for (const n of Object.values(this.npcs)) n.c.root.visible = false;
-    for (const c of this.crowd) c.c.root.visible = false;
+    this.hideOutdoorPeople();
     this.seatRing.visible = true;
     this.exitRing.visible = true;
     const seat = interior.seats[interior.playerSeat];
@@ -447,26 +655,50 @@ export class Scene3D implements SceneHooks {
     this.exitRing.visible = true;
     this.exitRing.position.set(interior.door.x, 0.12, interior.door.z);
 
+    this.hideOutdoorPeople();
     const extras = interior.extras;
+    const rng = Math.random;
+    // the kitchen staff move about behind the counter, each on their own stretch
     this.staff.forEach((c, i) => {
       const p = extras?.staff[i];
       c.root.visible = !!p;
       if (!p) return;
-      c.setSeated(false);
-      c.root.position.set(p.x, 0, p.z);
-      c.yaw = p.yaw;
-      c.root.rotation.y = p.yaw;
+      const reach = [1.6, 1.0, 0.8][i] ?? 1;
+      this.walk(
+        this.indoorWalkers,
+        c,
+        {
+          colliders: [],
+          bounds: { x0: p.x - reach, x1: p.x + reach, z0: p.z - 0.35, z1: p.z + 0.35 },
+        },
+        { at: p, speed: 0.9, pause: [1.5, 6], attend: 4, rest: p.yaw },
+      );
+      if (i > 0) this.who.set(c, i === 1 ? 'x_manager' : 'x_cook');
     });
 
-    // Friends take seats first, then ordinary students fill about half of the rest.
-    const rng = mulberry32(spec.seed);
-    const free = interior.seats.map((_, i) => i);
-    for (let i = free.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [free[i], free[j]] = [free[j], free[i]];
-    }
-    for (const n of Object.values(this.npcs)) n.c.root.visible = false;
-    for (const c of this.crowd) c.c.root.visible = false;
+    const avoid: Keep[] = [
+      { ...interior.door, r: 2.2 },
+      { ...interior.spawn, r: 2.2 },
+      ...(extras
+        ? [
+            { ...extras.order, r: 2 },
+            { ...extras.store, r: 1.6 },
+            { ...extras.vending, r: 1.6 },
+          ]
+        : []),
+    ];
+    const area: WanderArea = { colliders: interior.colliders, bounds: interior.bounds, body: 0.36, avoid };
+
+    // Friends take seats first; then a random crowd, some eating and some walking about.
+    const busy: Busyness = spec.mealtime
+      ? 'busy'
+      : this.busyness(game.s?.period ?? 0) === 'late'
+        ? 'late'
+        : 'quiet';
+    const free = shuffle(
+      interior.seats.map((_, i) => i),
+      rng,
+    );
     for (const id of spec.guests) {
       const idx = free.pop();
       if (idx === undefined) break;
@@ -476,29 +708,38 @@ export class Scene3D implements SceneHooks {
       room.guests.push({ id, seat: idx });
       n.x = seat.x;
       n.z = seat.z;
+      n.y = 0;
       n.greeted = true;
-      n.c.setSeated(true);
-      n.c.yaw = seat.yaw;
-      n.c.root.rotation.y = seat.yaw;
-      n.c.root.position.set(seat.x, 0, seat.z);
-      n.c.root.visible = true;
+      this.seatAt(n.c, seat);
     }
-    const diners = Math.min(this.classmates.length, Math.floor(free.length * (spec.mealtime ? 0.5 : 0.12)));
+    const walking = headCount('canteenWalkers', busy, rng);
+    const diners = Math.min(this.classmates.length - walking, free.length, headCount('diners', busy, rng));
+    const students = pickStudents(rng, this.classmates.length);
     this.classmates.forEach((c, i) => {
-      if (i >= diners) {
+      if (i >= diners + walking) {
         c.root.visible = false;
         return;
       }
-      const idx = free[i];
-      const seat = interior.seats[idx];
-      room.occupied.add(idx);
-      c.setLook(randomLook(mulberry32(spec.seed + i * 977)));
-      c.setSeated(true);
-      c.root.position.set(seat.x, 0, seat.z);
-      c.yaw = seat.yaw;
-      c.root.rotation.y = seat.yaw;
-      c.root.visible = true;
+      this.cast(c, students[i]);
+      if (i < diners) {
+        room.occupied.add(free[i]);
+        this.seatAt(c, interior.seats[free[i]]);
+      } else this.walk(this.indoorWalkers, c, area);
     });
+  }
+
+  private seatAt(c: Character, seat: { x: number; z: number; yaw: number }, y = 0): void {
+    c.setSeated(true);
+    c.root.position.set(seat.x, y, seat.z);
+    c.yaw = seat.yaw;
+    c.root.rotation.y = seat.yaw;
+    c.root.visible = true;
+  }
+
+  private hideOutdoorPeople(): void {
+    for (const n of Object.values(this.npcs)) n.c.root.visible = false;
+    for (const c of this.crowd) c.root.visible = false;
+    for (const o of this.outdoor) o.c.root.visible = false;
   }
 
   /** Walk into a department building's corridor: the lobby, a floor with its stairs and classroom doors. */
@@ -538,44 +779,42 @@ export class Scene3D implements SceneHooks {
     this.exitRing.visible = fx.variant === 'ground';
     this.exitRing.position.set(interior.door.x, 0.12, interior.door.z);
     for (const c of this.staff) c.root.visible = false;
-    for (const n of Object.values(this.npcs)) n.c.root.visible = false;
-    for (const c of this.crowd) c.c.root.visible = false;
+    this.hideOutdoorPeople();
 
-    // a few friends and students wait about in the corridor
-    const rng = mulberry32(spec.seed);
-    const free = fx.people.map((_, i) => i);
-    for (let i = free.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [free[i], free[j]] = [free[j], free[i]];
-    }
-    const place = (c: Character, p: Person): void => {
-      c.setSeated(false);
-      c.setActivity('none');
-      c.yaw = p.yaw;
-      c.root.rotation.y = p.yaw;
-      c.root.position.set(p.x, p.y ?? 0, p.z);
-      c.root.visible = true;
+    // friends, students and sometimes a professor stroll along the corridor
+    const area: WanderArea = {
+      colliders: interior.colliders,
+      bounds: fx.walk,
+      body: 0.4,
+      avoid: [
+        { ...at, r: 2.6 },
+        ...(fx.variant === 'ground' ? [{ ...interior.door, r: 2.2 }] : []),
+        ...fx.doors.map((d) => ({ ...d, r: 1.7 })),
+        ...(fx.directory ? [{ ...fx.directory, r: 1.8 }] : []),
+      ],
     };
     for (const id of spec.guests) {
-      const idx = free.pop();
-      if (idx === undefined) break;
-      const p = fx.people[idx];
       const n = this.npcs[id];
-      n.x = p.x;
-      n.z = p.z;
-      n.y = 0;
       n.greeted = true;
-      place(n.c, p);
-      room.guests.push({ id, seat: idx });
+      this.walk(this.indoorWalkers, n.c, area, { npc: n });
+      room.guests.push({ id, seat: -1 });
     }
-    const count = Math.min(this.classmates.length, Math.max(2, free.length - 1));
+    const pid = spec.professor ? professorId(spec.professor) : null;
+    if (spec.professor && pid) {
+      this.professor.setLook(professorLook(spec.professor));
+      this.who.set(this.professor, pid);
+      this.walk(this.indoorWalkers, this.professor, area, { speed: 1.1 });
+    }
+    const rng = Math.random;
+    const count = headCount('corridor', this.busyness(game.s?.period ?? 0), rng);
+    const students = pickStudents(rng, this.classmates.length);
     this.classmates.forEach((c, i) => {
       if (i >= count) {
         c.root.visible = false;
         return;
       }
-      c.setLook(randomLook(mulberry32(spec.seed + i * 977)));
-      place(c, fx.people[free[i]]);
+      this.cast(c, students[i]);
+      this.walk(this.indoorWalkers, c, area);
     });
   }
 
@@ -607,59 +846,98 @@ export class Scene3D implements SceneHooks {
     this.exitRing.visible = true;
     this.exitRing.position.set(interior.door.x, 0.12, interior.door.z);
     for (const c of this.staff) c.root.visible = false;
-    if (ex.registrar) {
-      const c = this.staff[0];
-      c.setSeated(false);
-      c.setActivity('none');
-      c.root.position.set(ex.registrar.x, 0, ex.registrar.z);
-      c.yaw = ex.registrar.yaw;
-      c.root.rotation.y = ex.registrar.yaw;
-      c.root.visible = true;
-    }
-    for (const n of Object.values(this.npcs)) n.c.root.visible = false;
-    for (const c of this.crowd) c.c.root.visible = false;
+    this.hideOutdoorPeople();
 
-    // Friends take the first places, then students of the club fill what is left.
-    const rng = mulberry32(spec.seed);
-    const free = ex.people.map((_, i) => i);
-    for (let i = free.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [free[i], free[j]] = [free[j], free[i]];
-    }
-    const place = (c: Character, p: Person): void => {
-      const sit = p.pose === 'sit' || p.pose === 'playSit';
-      c.setSeated(sit);
-      c.setActivity(
-        p.pose === 'dance' ? 'dance' : p.pose === 'play' || p.pose === 'playSit' ? 'play' : 'none',
+    const rng = Math.random;
+    const floorY = ex.floorY;
+    const avoid: Keep[] = [
+      { ...at, r: 2.2 },
+      { ...interior.door, r: 2.2 },
+      ...(ex.desk ? [{ ...ex.desk, r: 1.8 }] : []),
+      ...(ex.play ? [{ x: ex.play.x, z: ex.play.z, r: 1.6 }] : []),
+      ...(ex.doors ?? []).map((d) => ({ ...d.at, r: 1.5 })),
+    ];
+    const area: WanderArea = { colliders: interior.colliders, bounds: interior.bounds, body: 0.36, avoid };
+    // strollers stay on whichever level (floor or stage) they start on
+    const level = (y: number): WanderArea['ok'] =>
+      floorY ? (x, z) => Math.abs(floorY(x, z) - y) < 0.05 : undefined;
+
+    if (ex.registrar) {
+      const p = ex.registrar;
+      this.walk(
+        this.indoorWalkers,
+        this.staff[0],
+        { colliders: interior.colliders, bounds: interior.bounds, body: 0.36, home: p, radius: 1.3 },
+        { at: p, speed: 0.8, pause: [2, 7], rest: p.yaw },
       );
-      c.yaw = p.yaw;
-      c.root.rotation.y = p.yaw;
-      c.root.position.set(p.x, p.y ?? 0, p.z);
-      c.root.visible = true;
+    }
+
+    /** Fill one of the room's places: people sit where there is a seat, and move about otherwise. */
+    const fill = (c: Character, p: Person, npc?: NpcActor): void => {
+      if (p.pose === 'sit' || p.pose === 'playSit') {
+        this.seatAt(c, p, p.y ?? 0);
+        c.setActivity(p.pose === 'playSit' ? 'play' : 'none');
+        if (npc) {
+          npc.x = p.x;
+          npc.z = p.z;
+          npc.y = p.y ?? 0;
+        }
+        return;
+      }
+      if (p.pose === 'stand') {
+        this.walk(this.indoorWalkers, c, { ...area, ok: level(0) }, { npc, floorY });
+        return;
+      }
+      // dancers, players and musicians move around their own part of the room
+      const sport = spec.kind === 'sports';
+      const patch: WanderArea = {
+        ...area,
+        home: p,
+        radius: sport ? 4.5 : p.pose === 'dance' ? 1.8 : 0.8,
+        ok: level(p.y ?? 0),
+      };
+      this.walk(this.indoorWalkers, c, patch, {
+        npc,
+        floorY,
+        idle: p.pose,
+        speed: sport ? 2.4 + rng() : 0.7,
+        pause: sport ? [0.3, 2] : [1, 4],
+        at: randomSpot(patch, rng, this.positions(this.indoorWalkers)) ?? p,
+      });
     };
+
+    // Friends first, then a random share of the club's students, then a few people just passing through.
+    const free = shuffle(ex.people, rng);
     for (const id of spec.guests) {
-      const idx = free.pop();
-      if (idx === undefined) break;
-      const p = ex.people[idx];
+      const p = free.pop();
+      if (!p) break;
       const n = this.npcs[id];
-      n.x = p.x;
-      n.z = p.z;
-      n.y = p.y ?? 0;
       n.greeted = true;
-      place(n.c, p);
-      room.guests.push({ id, seat: idx });
+      fill(n.c, p, n);
+      room.guests.push({ id, seat: -1 });
     }
     const tint = ex.club ? CLUB_COLOUR[ex.club] : undefined;
-    const count = Math.min(this.classmates.length, free.length);
+    const late = this.busyness(game.s?.period ?? 0) === 'late';
+    const share = (late ? 0.1 : 0.4) + rng() * 0.5;
+    const places = free.slice(0, Math.min(this.classmates.length, Math.round(free.length * share)));
+    const visitors = Math.min(
+      this.classmates.length - places.length,
+      headCount('clubVisitors', late ? 'late' : 'busy', rng),
+    );
+    const students = pickStudents(rng, this.classmates.length);
+    // the Club Captain is always somewhere in the lobby
+    const captain = spec.kind === 'clubhall';
+    const total = Math.min(this.classmates.length, places.length + visitors + (captain ? 1 : 0));
     this.classmates.forEach((c, i) => {
-      if (i >= count) {
+      if (i >= total) {
         c.root.visible = false;
         return;
       }
-      const look = randomLook(mulberry32(spec.seed + i * 977));
-      if (tint !== undefined && i % 4 !== 3) look.blazer = tint;
-      c.setLook(look);
-      place(c, ex.people[free[i]]);
+      const id = captain && i === 0 ? 'x_captain' : students[i];
+      this.cast(c, id, tint !== undefined && i % 4 !== 3 ? tint : undefined);
+      const place = captain && i === 0 ? undefined : places[i - (captain ? 1 : 0)];
+      if (place) fill(c, place);
+      else this.walk(this.indoorWalkers, c, { ...area, ok: level(0) }, { floorY });
     });
   }
 
@@ -678,6 +956,14 @@ export class Scene3D implements SceneHooks {
     this.playerChar.root.rotation.y = pl.yaw;
     this.playerChar.root.position.set(pl.x, this.playerY, pl.z);
     this.seatRing.visible = false;
+  }
+
+  /** Dress a background character as a particular person: the same face every time you meet them. */
+  private cast(c: Character, id: PersonId, blazer?: number): void {
+    const look = personLook(id);
+    if (blazer !== undefined) look.blazer = blazer;
+    c.setLook(look);
+    this.who.set(c, id);
   }
 
   /** Show (colour) or hide (null) the tray the player carries. */
@@ -719,9 +1005,15 @@ export class Scene3D implements SceneHooks {
     if (!r) return;
     r.interior.group.visible = false;
     this.room = null;
+    this.indoorWalkers.clear();
     this.professor.root.visible = false;
+    this.professor.setActivity('none');
     for (const c of this.classmates) c.root.visible = false;
-    for (const c of this.staff) c.root.visible = false;
+    for (const c of this.staff) {
+      c.root.visible = false;
+      c.setActivity('none');
+      c.setSeated(false);
+    }
     this.tray.visible = false;
     // Friends who were sitting in the canteen stand up again; `placeActors` puts them back outside.
     for (const g of r.guests) {
@@ -762,7 +1054,32 @@ export class Scene3D implements SceneHooks {
     this.playerChar.yaw = seat.yaw;
     this.playerChar.root.rotation.y = seat.yaw;
     this.seatRing.visible = false;
+    this.seatLatecomers(r);
   }
+
+  /** Once the lecture starts, students still on their feet take the nearest free chairs. */
+  private seatLatecomers(r: ActiveRoom): void {
+    const seats = r.interior.seats;
+    for (const c of this.classmates) {
+      const a = this.indoorWalkers.get(c);
+      if (!a) continue;
+      let best = -1;
+      let bestD = Infinity;
+      seats.forEach((s, i) => {
+        if (i === r.interior.playerSeat || r.occupied.has(i)) return;
+        const d = Math.hypot(s.x - a.w.x, s.z - a.w.z);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      });
+      if (best < 0) continue;
+      r.occupied.add(best);
+      this.indoorWalkers.delete(c);
+      this.seatAt(c, seats[best]);
+    }
+  }
+
   refreshCollectibles(): void {
     const s = game.s;
     this.stars.forEach((n, i) => {
@@ -785,14 +1102,6 @@ export class Scene3D implements SceneHooks {
   }
 
   /* ======================= construction helpers ======================= */
-  private npcSpot(id: NpcId): [number, number] | null {
-    const s = game.s;
-    if (!s) return null;
-    if (!St.isFreeKind(St.periodKind(s)) || s.period >= EVENING_PERIOD) return null;
-    if (!St.npcPresent(s, id)) return null;
-    return HANGOUTS[id][s.period === AFTER_PERIOD ? 'after' : 'lunch'];
-  }
-
   private buildStars(): void {
     STARS.forEach(([x, z], i) => {
       const root = new Group();
@@ -1114,15 +1423,37 @@ export class Scene3D implements SceneHooks {
         const seat = interior.seats[interior.playerSeat];
         consider({ kind: 'seat', info: inter.seat }, seat.x, seat.z, 2.2);
         consider({ kind: 'exit', info: inter.exit }, interior.door.x, interior.door.z, 1.9);
-        consider({ kind: 'prof', info: inter.prof }, interior.prof.x, interior.prof.z, 2.3);
+        const at = this.professor.root.position;
+        consider({ kind: 'prof', info: inter.prof }, at.x, at.z, 2.6);
+      }
+    }
+    if (!room.seated) {
+      const reach = isFloor(room) ? 1.8 : isCanteen(room) || isClub(room) ? 1.5 : 1.1;
+      const talkable = isFloor(room) ? [...this.classmates, this.professor] : this.classmates;
+      for (const c of talkable) {
+        const id = this.who.get(c);
+        if (id && c.root.visible)
+          consider({ kind: 'person', id }, c.root.position.x, c.root.position.z, reach);
+      }
+      const ex = interior.extras;
+      if (isCanteen(room) && ex) {
+        // you speak to the kitchen staff across the counter, wherever along it they are
+        consider({ kind: 'person', id: 'x_manager' }, this.staff[1].root.position.x, ex.order.z, 1.8);
+        consider({ kind: 'person', id: 'x_cook' }, this.staff[2].root.position.x, ex.order.z, 1.8);
       }
     }
     this.target = blocked ? null : best;
     const t = this.target as Target | null;
     if (!t) hud.setPrompt(null);
     else if (t.kind === 'npc') this.npcPrompt(t.id);
+    else if (t.kind === 'person') this.personPrompt(t.id);
     else if (t.kind !== 'cat' && t.kind !== 'building')
       hud.setPrompt({ text: t.info.label, enabled: t.info.enabled, why: t.info.enabled ? '' : t.info.why });
+  }
+
+  private personPrompt(id: PersonId): void {
+    const p = PEOPLE[id];
+    hud.setPrompt({ text: `Talk to ${p.name} (${p.title})`, enabled: true });
   }
 
   /** The "Talk to …" prompt for a friend, with how they relate to the player's year. */
@@ -1153,6 +1484,11 @@ export class Scene3D implements SceneHooks {
     }
     for (const n of Object.values(this.npcs))
       if (n.c.root.visible) consider({ kind: 'npc', id: n.id }, n.x, n.z, 2.4);
+    for (const c of this.crowd) {
+      const id = this.who.get(c);
+      if (id && c.root.visible) consider({ kind: 'person', id }, c.root.position.x, c.root.position.z, 2.0);
+    }
+    for (const o of this.outdoor) if (o.c.root.visible) consider({ kind: 'person', id: o.id }, o.x, o.z, 2.2);
     for (const c of this.cats) consider({ kind: 'cat', i: c.i }, c.x, c.z, 2.2);
     this.target = blocked ? null : best;
     const t = this.target as Target | null;
@@ -1162,6 +1498,8 @@ export class Scene3D implements SceneHooks {
       hud.setPrompt({ text: t.info.label, enabled: t.info.enabled, why: t.info.enabled ? '' : t.info.why });
     } else if (t.kind === 'npc') {
       this.npcPrompt(t.id);
+    } else if (t.kind === 'person') {
+      this.personPrompt(t.id);
     } else if (t.kind === 'cat') {
       hud.setPrompt({ text: 'Pet the Cat', enabled: true });
     }
@@ -1192,13 +1530,19 @@ export class Scene3D implements SceneHooks {
       }
     }
 
+    for (const o of this.outdoor)
+      o.c.root.visible = this.mode === 'play' && !this.room && !!s && s.period < EVENING_PERIOD;
+
+    const walkers = this.room ? this.indoorWalkers : this.outdoorWalkers;
+    this.moveWalkers(walkers, dt);
+
+    // friends who are sitting down still turn to look and wave
     for (const n of Object.values(this.npcs)) {
-      if (!n.c.root.visible) continue;
+      if (!n.c.root.visible || walkers.has(n.c)) continue;
       n.c.root.position.set(n.x, n.y, n.z);
       const dx = player.x - n.x;
       const dz = player.z - n.z;
       const d = Math.hypot(dx, dz);
-      if (d < 9 && this.mode === 'play' && !n.c.seated) n.c.faceDir(dx, dz, dt, 5);
       if (d < 6 && !n.greeted && this.mode === 'play') {
         n.greeted = true;
         n.c.wave(1.4);
@@ -1206,35 +1550,9 @@ export class Scene3D implements SceneHooks {
       n.c.update(dt, 0, time + n.x);
     }
 
-    for (const c of this.crowd) {
-      if (!c.c.root.visible) continue;
-      let sp = 0;
-      if (c.wait > 0) c.wait -= dt;
-      else {
-        const dx = c.tx - c.x;
-        const dz = c.tz - c.z;
-        const d = Math.hypot(dx, dz);
-        if (d < 0.6) {
-          const [px, pz] = CROWD_POINTS[Math.floor(c.rng() * CROWD_POINTS.length)];
-          c.tx = px + (c.rng() - 0.5) * 3;
-          c.tz = pz + (c.rng() - 0.5) * 3;
-          c.wait = 2 + c.rng() * 5;
-        } else {
-          sp = 1.9;
-          c.x += (dx / d) * sp * dt;
-          c.z += (dz / d) * sp * dt;
-          c.c.faceDir(dx, dz, dt, 6);
-          resolveCollisions(this.campus.colliders, c, 0.45);
-        }
-      }
-      c.c.root.position.set(c.x, 0, c.z);
-      c.c.update(dt, sp * 2.2, time);
-    }
-
     if (this.room) {
-      this.professor.update(dt, 0, time);
-      for (const c of this.staff) if (c.root.visible) c.update(dt, 0, time + c.root.position.x);
-      for (const c of this.classmates) if (c.root.visible) c.update(dt, 0, time + c.root.position.x);
+      for (const c of this.classmates)
+        if (c.root.visible && !walkers.has(c)) c.update(dt, 0, time + c.root.position.x);
       const pulse = 1 + Math.sin(time * 4) * 0.12;
       this.seatRing.scale.set(0.9 * pulse, 1, 0.9 * pulse);
       this.exitRing.scale.set(1.1 * pulse, 1, 1.1 * pulse);
@@ -1446,9 +1764,9 @@ export class Scene3D implements SceneHooks {
         {
           id: 'room_prof',
           text: `🎓 ${spec.prof}`,
-          x: interior.prof.x,
+          x: this.professor.root.position.x,
           y: 2.5,
-          z: interior.prof.z,
+          z: this.professor.root.position.z,
           cls: 'npc',
         },
         { id: 'room_exit', text: '🚪 Exit', x: interior.door.x, y: 3.1, z: interior.door.z + 0.4, cls: '' },
@@ -1503,6 +1821,19 @@ export class Scene3D implements SceneHooks {
       e.style.left = p[0] + 'px';
       e.style.top = p[1] + 'px';
       if (interactions && !interactions[d.id].enabled) e.classList.add('closed');
+    }
+    for (const o of this.outdoor) {
+      const e = this.label('staff_' + o.id, 'npc');
+      const near = o.c.root.visible && Math.hypot(o.x - this.player.x, o.z - this.player.z) < 20;
+      const p = near ? this.view.project(o.x, 2.55, o.z) : null;
+      if (!p) {
+        e.style.display = 'none';
+        continue;
+      }
+      e.style.display = '';
+      e.textContent = `${PEOPLE[o.id].emoji} ${PEOPLE[o.id].name}`;
+      e.style.left = p[0] + 'px';
+      e.style.top = p[1] + 'px';
     }
     // Friends keep their name tags inside the canteen, where they sit at the tables.
     const showNpc =

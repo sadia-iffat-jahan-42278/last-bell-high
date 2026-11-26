@@ -3,6 +3,7 @@
 import { Sound } from '../audio/sound';
 import * as St from '../core/state';
 import { clamp, hashStr, mulberry32, shuffle, sleep } from '../core/util';
+import { STUDENTS } from '../core/people';
 import { $, el, esc } from '../ui/dom';
 import { ui } from '../ui/ui';
 import { FALLACIES, chooseArguments, type FallacyId } from './debateBank';
@@ -23,15 +24,6 @@ const PLANS: (1 | 2 | 3 | 4)[][] = [
   [3, 3, 3, 4, 4, 4, 4, 4],
 ];
 const SECONDS: Record<number, number> = { 1: 16, 2: 15, 3: 14, 4: 13 };
-const OPPONENTS = [
-  'Brad Holloway',
-  'Dr. Voss',
-  'Priya Nair',
-  'Coach Dunn',
-  'Lucía Romero',
-  'Prof. Ames',
-  'Tobias Finch',
-];
 const HISTORY_KEY = 'club:debate';
 const HISTORY_MAX = 30;
 
@@ -88,7 +80,8 @@ export async function runDebate(cfg: ArcadeConfig): Promise<DebateResult> {
     const a = args[i];
     history.push(hashStr(a.line));
     while (history.length > HISTORY_MAX) history.shift();
-    const opp = OPPONENTS[(hashStr(a.line) + i) % OPPONENTS.length];
+    // your opponent is one of your classmates
+    const opp = STUDENTS[(hashStr(a.line) + i) % STUDENTS.length].name;
     $('#db-n', root).textContent = `Round ${i + 1} / ${total}`;
     $('#db-motion', root).textContent = `Motion: ${a.motion}`;
     $('#db-who', root).textContent = `🗣️ ${opp}`;

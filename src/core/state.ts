@@ -26,16 +26,19 @@ import {
 import type {
   AchievementId,
   ActiveEvent,
+  Bond,
   BonusKey,
   ClubId,
   CourseId,
   Daily,
+  Gender,
   GameState,
   Look,
   Meta,
   NpcId,
   PeriodKind,
   PerkId,
+  PersonId,
   QuestId,
   RecordKind,
   Relation,
@@ -43,13 +46,22 @@ import type {
   SubjectId,
   Weather,
 } from './types';
-import { CLUB_IDS } from './types';
+import {
+  PEOPLE,
+  PERSONALITY_AT,
+  RELATION_CHANGE,
+  STUDENTS,
+  moodFor,
+  type Mood,
+  type ReplyTone,
+} from './people';
+import { CLUB_IDS, NPC_IDS } from './types';
 import { clamp, hashStr, mulberry32, type Rng } from './util';
 
 export const SAVE_KEY = 'lastbell.save.v2';
 export const META_KEY = 'lastbell.meta.v1';
 export const TOTAL_DAYS = TERMS * DAYS_PER_TERM;
-/** The student's name when the player does not choose one. */
+/** The student's name when neither the player nor their gender chooses one. */
 export const DEFAULT_NAME = 'Alex';
 
 export function defaultLook(): Look {
@@ -85,11 +97,26 @@ export const freshDaily = (): Daily => ({
   notes: [],
 });
 
-export function newState(name: string, look: Look, meta: Meta = defaultMeta()): GameState {
+/** The genders you can pick, with the name a new student gets if they do not type one. */
+export const GENDERS: { id: Gender; name: string; defaultName: string }[] = [
+  { id: 'female', name: 'Female', defaultName: 'Sophie' },
+  { id: 'male', name: 'Male', defaultName: 'Daniel' },
+  { id: 'nonbinary', name: 'Non-binary', defaultName: DEFAULT_NAME },
+];
+export const defaultName = (gender: Gender): string =>
+  GENDERS.find((g) => g.id === gender)?.defaultName ?? DEFAULT_NAME;
+
+export function newState(
+  name: string,
+  look: Look,
+  meta: Meta = defaultMeta(),
+  gender: Gender = 'nonbinary',
+): GameState {
   const npcIds = Object.keys(NPCS) as NpcId[];
   const s: GameState = {
     v: 2,
-    name: name || DEFAULT_NAME,
+    name: name || defaultName(gender),
+    gender,
     look: { ...look },
     day: 0,
     period: 0,
@@ -110,8 +137,9 @@ export function newState(name: string, look: Look, meta: Meta = defaultMeta()): 
     seenQ: {},
     showcase: [],
     friends: Object.fromEntries(
-      npcIds.map((k) => [k, { rel: 0, story: 0, talked: -1, gift: -1 }]),
+      npcIds.map((k) => [k, { interaction: 0, rel: 0, story: 0, talked: -1, gift: -1 }]),
     ) as GameState['friends'],
+    people: {},
     items: { snack: 2, drink: 1 },
     stars: [],
     cats: [],
@@ -315,12 +343,50 @@ export function addMastery(s: GameState, subj: SubjectId, v: number): number {
   s.touched[subj] = true;
   return v;
 }
-export function addRel(s: GameState, npc: NpcId, v: number): number {
-  v *= (1 + stat(s, 'cha') * 0.04) * (has(s, 'social') ? 1.5 : 1);
-  const f = s.friends[npc];
-  const o = f.rel;
-  f.rel = clamp(f.rel + v, 0, 100);
-  return f.rel - o;
+/* ---------- the two scores you have with every person ---------- */
+/** Your scores with a person (created on first use for people who are not one of the sixteen friends). */
+export function bondOf(s: GameState, id: PersonId): Bond {
+  if (Object.prototype.hasOwnProperty.call(s.friends, id)) return s.friends[id as NpcId];
+  return (s.people[id] ??= { interaction: 0, rel: 0, talked: -1 });
+}
+/** Interaction points only ever go up. Returns the points added. */
+export function addInteraction(s: GameState, id: PersonId, points: number): number {
+  const added = Math.max(0, Math.round(points));
+  bondOf(s, id).interaction += added;
+  return added;
+}
+/**
+ * Relationship points move both ways, between -100 and +100. Charisma and the Social Butterfly perk make good
+ * impressions stronger; they do not soften bad ones. Returns the actual change.
+ */
+export function addRel(s: GameState, id: PersonId, v: number): number {
+  if (v > 0) v *= (1 + stat(s, 'cha') * 0.04) * (has(s, 'social') ? 1.5 : 1);
+  const b = bondOf(s, id);
+  const o = b.rel;
+  b.rel = clamp(b.rel + v, -100, 100);
+  return b.rel - o;
+}
+/** A person's personality stays hidden until you have interacted with them enough. */
+export const knowsPersonality = (s: GameState, id: PersonId): boolean =>
+  bondOf(s, id).interaction >= PERSONALITY_AT;
+
+export interface Conversation {
+  mood: Mood;
+  /** Interaction points gained (always positive). */
+  interaction: number;
+  /** Change in relationship (positive or negative). */
+  relation: number;
+  /** This conversation revealed their personality. */
+  unlocked: boolean;
+}
+/** Have a conversation in which you answer in a certain tone. */
+export function converse(s: GameState, id: PersonId, tone: ReplyTone): Conversation {
+  const knew = knowsPersonality(s, id);
+  const mood = moodFor(PEOPLE[id], tone);
+  const interaction = addInteraction(s, id, 10);
+  const relation = addRel(s, id, RELATION_CHANGE[mood]);
+  bondOf(s, id).talked = s.day;
+  return { mood, interaction, relation, unlocked: !knew && knowsPersonality(s, id) };
 }
 export const clubLevel = (xp: number): number => Math.min(10, 1 + Math.floor(xp / 60));
 export const clubProgress = (xp: number): number => (clubLevel(xp) >= 10 ? 1 : (xp % 60) / 60);
@@ -387,32 +453,8 @@ export function playerScore(s: GameState, t: number): number | null {
   return vals.length ? avg(vals) : null;
 }
 
-const NAMES = [
-  'Aiko',
-  'Ben',
-  'Chloe',
-  'Dev',
-  'Elena',
-  'Farid',
-  'Grace',
-  'Hana',
-  'Ivan',
-  'Jade',
-  'Karim',
-  'Lena',
-  'Milo',
-  'Nadia',
-  'Omar',
-  'Priya',
-  'Quinn',
-  'Ravi',
-  'Sofia',
-  'Tariq',
-  'Uma',
-  'Victor',
-  'Wen',
-  'Zara',
-];
+/** The rest of your cohort: the same twenty-four classmates you meet around campus. */
+const NAMES = STUDENTS.map((p) => p.name);
 export interface Classmate {
   name: string;
   ability: number;
@@ -561,7 +603,7 @@ export function migrateSave(raw: unknown): GameState | null {
     typeof raw.name === 'string' ? raw.name : DEFAULT_NAME,
     defaultLook(),
   ) as unknown as Json;
-  const out: Json = { ...base, ...raw };
+  const out: Json = { ...base, ...raw, people: raw.people ?? {} };
   for (const k of NESTED_KEYS) {
     if (isRecord(raw[k])) out[k] = { ...(base[k] as Json), ...(raw[k] as Json) };
   }
@@ -577,6 +619,13 @@ export function migrateSave(raw: unknown): GameState | null {
   if (!Array.isArray(s.sessions) || s.sessions.length !== TERMS)
     s.sessions = Array.from({ length: TERMS }, (_, t) => (isRecord(s.sessions?.[t]) ? s.sessions[t] : {}));
   if (!isRecord(s.seenQ)) s.seenQ = {};
+  // Saves from before the two-score system: friendship becomes the relationship, and counts as interaction too.
+  for (const id of NPC_IDS) {
+    const f = s.friends[id];
+    if (typeof f.interaction !== 'number') f.interaction = Math.max(0, Math.round(f.rel));
+  }
+  if (!isRecord(s.people)) s.people = {};
+  if (!GENDERS.some((g) => g.id === s.gender)) s.gender = 'nonbinary';
   return s;
 }
 
