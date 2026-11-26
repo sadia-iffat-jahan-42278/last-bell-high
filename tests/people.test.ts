@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COURSES } from '../src/core/data';
+import { COURSES, DEPARTMENTS, NPCS } from '../src/core/data';
 import {
   FRIEND_PEOPLE,
   PEOPLE,
@@ -13,11 +13,12 @@ import {
   moodFor,
   pickStudents,
   professorId,
+  studentsOf,
   relationshipLabel,
   replyOptions,
 } from '../src/core/people';
 import * as St from '../src/core/state';
-import { NPC_IDS, type GameState } from '../src/core/types';
+import { MAJOR_IDS, NPC_IDS, type GameState } from '../src/core/types';
 import { mulberry32 } from '../src/core/util';
 import { resolveCollisions } from '../src/world/collision';
 import { STAFF_SPOTS } from '../src/world/layout';
@@ -26,9 +27,9 @@ import { buildCampusGeometry } from '../src/render/campus';
 const fresh = (): GameState => St.newState('Tester', St.defaultLook());
 
 describe('gender and default names', () => {
-  it('offers three genders, each with its own default name', () => {
-    expect(St.GENDERS.map((g) => g.id)).toEqual(['female', 'male', 'nonbinary']);
-    expect(new Set(St.GENDERS.map((g) => g.defaultName)).size).toBe(3);
+  it('offers female and male, each with its own default name', () => {
+    expect(St.GENDERS.map((g) => g.id)).toEqual(['female', 'male']);
+    expect(new Set(St.GENDERS.map((g) => g.defaultName)).size).toBe(2);
   });
 
   it('names a new student after their gender when no name is typed, and keeps a typed one', () => {
@@ -47,12 +48,12 @@ describe('gender and default names', () => {
 });
 
 describe('the fixed cast', () => {
-  it('is exactly 71 people: 16 friends, 24 classmates, 23 professors and 8 staff', () => {
+  it('is exactly 87 people: 16 friends, 40 classmates, 23 professors and 8 staff', () => {
     expect(FRIEND_PEOPLE.length).toBe(16);
-    expect(STUDENTS.length).toBe(24);
+    expect(STUDENTS.length).toBe(40);
     expect(PROFESSORS.length).toBe(23);
     expect(STAFF.length).toBe(8);
-    expect(PERSON_IDS.length).toBe(71);
+    expect(PERSON_IDS.length).toBe(87);
     expect(FRIEND_PEOPLE.map((p) => p.id)).toEqual([...NPC_IDS]);
   });
 
@@ -82,6 +83,34 @@ describe('the fixed cast', () => {
     }
   });
 
+  it('assigns every student and friend a department, with eight classmates in each major', () => {
+    for (const m of MAJOR_IDS) expect(studentsOf(m).length, m).toBe(8);
+    for (const x of [...FRIEND_PEOPLE, ...STUDENTS]) {
+      expect(MAJOR_IDS, x.name).toContain(x.dept);
+      expect(x.title, x.name).toContain(`${DEPARTMENTS[x.dept!].short} student`);
+    }
+    for (const id of NPC_IDS) expect(PEOPLE[id].dept).toBe(NPCS[id].major);
+    for (const m of MAJOR_IDS)
+      expect(
+        FRIEND_PEOPLE.some((f) => f.dept === m),
+        m,
+      ).toBe(true);
+  });
+
+  it('assigns every professor the department whose courses they teach', () => {
+    for (const c of Object.values(COURSES)) {
+      const prof = PEOPLE[professorId(c.prof)!];
+      expect(prof.dept, `${c.prof} teaching ${c.name}`).toBe(c.area);
+      expect(prof.title).toBe(`${DEPARTMENTS[c.area].short} professor`);
+    }
+  });
+
+  it('fills a class only with students of the departments that take it', () => {
+    for (const id of pickStudents(mulberry32(2), 40, ['eee'])) expect(PEOPLE[id].dept).toBe('eee');
+    expect(pickStudents(mulberry32(2), 40, ['eee']).length).toBe(8);
+    expect(pickStudents(mulberry32(2), 40, ['cse', 'phy']).length).toBe(16);
+  });
+
   it('is who the rankings are made of', () => {
     expect(St.classmates().map((c) => c.name)).toEqual(STUDENTS.map((p) => p.name));
   });
@@ -90,7 +119,7 @@ describe('the fixed cast', () => {
     const a = pickStudents(mulberry32(4), 16);
     expect(new Set(a).size).toBe(16);
     for (const id of a) expect(PEOPLE[id].role).toBe('student');
-    expect(pickStudents(mulberry32(4), 100).length).toBe(24);
+    expect(pickStudents(mulberry32(4), 100).length).toBe(40);
   });
 });
 
@@ -169,24 +198,24 @@ describe('interaction and relationship points', () => {
     expect(relationshipLabel(90).name).toBe('Devoted');
   });
 
-  it('survive saving, and older saves are upgraded', () => {
-    const s = St.newState('Tester', St.defaultLook(), St.defaultMeta(), 'male');
+  it('survive saving, with gender and department', () => {
+    const s = St.newState('Tester', St.defaultLook(), St.defaultMeta(), 'male', 'eee');
     St.converse(s, 'p_osei', 'honest');
     const back = St.migrateSave(JSON.parse(JSON.stringify(s)))!;
     expect(back.gender).toBe('male');
+    expect(back.major).toBe('eee');
     expect(back.people.p_osei).toEqual(s.people.p_osei);
+  });
 
+  it('replace a missing or no longer offered gender or department with the default', () => {
     const old = JSON.parse(JSON.stringify(fresh()));
-    delete old.gender;
     delete old.people;
-    for (const id of NPC_IDS) delete old.friends[id].interaction;
-    old.friends.kai.rel = 44;
+    old.gender = 'unknown';
+    old.major = 'econ';
     const up = St.migrateSave(old)!;
-    expect(up.gender).toBe('nonbinary');
+    expect(up.gender).toBe('female');
+    expect(up.major).toBe('cse');
     expect(up.people).toEqual({});
-    expect(up.friends.kai.interaction).toBe(44);
-    expect(St.knowsPersonality(up, 'kai')).toBe(true);
-    expect(St.knowsPersonality(up, 'maya')).toBe(false);
   });
 });
 

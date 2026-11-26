@@ -1,7 +1,8 @@
-// The complete, fixed cast of Last Bell University: every person you can meet, each with a personality.
+// The complete, fixed cast of Engineers of the Elite: every person you can meet, each with a personality.
 // Nobody else exists: seated classmates, diners, passers-by and staff are all drawn from this list.
+import { DEPARTMENTS, FACULTY } from './courses';
 import { NPCS } from './npcs';
-import { NPC_IDS, type NpcId, type PersonId } from './types';
+import { DEPT_IDS, MAJOR_IDS, NPC_IDS, type DeptId, type MajorId, type NpcId, type PersonId } from './types';
 import { shuffle, type Rng } from './util';
 
 /** The way you answer someone. Each personality likes some tones and dislikes others. */
@@ -32,6 +33,8 @@ export interface Person {
   role: PersonRole;
   /** What they do, always visible. */
   title: string;
+  /** The department they study or teach in; staff belong to none. */
+  dept?: DeptId;
   emoji: string;
   /** Their own way of starting a conversation. */
   opener: string;
@@ -209,12 +212,12 @@ const FRIENDS: Record<NpcId, FriendRow> = {
 };
 
 /* ------------------------------------------------------------------------------------------ */
-/* Twenty-four classmates: the same people who appear on the grade rankings.                  */
+/* Forty classmates, eight from each major: the same people who appear on the grade rankings. */
 /* ------------------------------------------------------------------------------------------ */
 const STUDENT_ROWS: Row[] = [
   [
     'Aiko',
-    'Design student',
+    'cse',
     '🎨',
     'The Perfectionist',
     'meticulous, quiet, kind',
@@ -225,7 +228,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Ben',
-    'Economics student',
+    'cse',
     '📈',
     'The Joker',
     'loud, friendly, careless',
@@ -236,7 +239,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Chloe',
-    'Biology student',
+    'chem',
     '🌱',
     'The Helper',
     'warm, organised, anxious',
@@ -247,7 +250,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Dev',
-    'Computing student',
+    'cse',
     '💻',
     'The Debugger',
     'logical, dry, patient',
@@ -258,7 +261,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Elena',
-    'History student',
+    'phy',
     '📜',
     'The Skeptic',
     'sharp, well read, guarded',
@@ -269,7 +272,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Farid',
-    'Physics student',
+    'phy',
     '🔭',
     'The Wonderer',
     'dreamy, gentle, curious',
@@ -280,7 +283,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Grace',
-    'Law student',
+    'math',
     '⚖️',
     'The Achiever',
     'driven, competitive, fair',
@@ -291,7 +294,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Hana',
-    'Literature student',
+    'phy',
     '📖',
     'The Romantic',
     'poetic, shy, loyal',
@@ -302,7 +305,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Ivan',
-    'Maths student',
+    'math',
     '➗',
     'The Loner',
     'blunt, brilliant, private',
@@ -313,7 +316,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Jade',
-    'Sports student',
+    'eee',
     '🏃',
     'The Spark',
     'bubbly, fearless, restless',
@@ -324,7 +327,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Karim',
-    'Medicine student',
+    'chem',
     '🩺',
     'The Caretaker',
     'calm, attentive, tired',
@@ -335,7 +338,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Lena',
-    'Music student',
+    'eee',
     '🎻',
     'The Idealist',
     'passionate, earnest, stubborn',
@@ -346,7 +349,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Milo',
-    'Art student',
+    'phy',
     '🖌️',
     'The Free Spirit',
     'whimsical, relaxed, odd',
@@ -357,7 +360,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Nadia',
-    'Business student',
+    'eee',
     '💼',
     'The Planner',
     'efficient, polite, firm',
@@ -368,7 +371,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Omar',
-    'Engineering student',
+    'eee',
     '🔧',
     'The Fixer',
     'practical, cheerful, steady',
@@ -379,7 +382,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Priya',
-    'Chemistry student',
+    'chem',
     '🧪',
     'The Enthusiast',
     'eager, talkative, bright',
@@ -390,7 +393,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Quinn',
-    'Philosophy student',
+    'math',
     '🤔',
     'The Questioner',
     'thoughtful, contrary, soft-spoken',
@@ -401,7 +404,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Ravi',
-    'Statistics student',
+    'math',
     '📊',
     'The Realist',
     'measured, honest, wry',
@@ -412,7 +415,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Sofia',
-    'Media student',
+    'cse',
     '📸',
     'The Socialite',
     'chatty, stylish, generous',
@@ -423,7 +426,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Tariq',
-    'Politics student',
+    'cse',
     '🗳️',
     'The Debater',
     'argumentative, quick, principled',
@@ -434,7 +437,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Uma',
-    'Psychology student',
+    'chem',
     '🧠',
     'The Empath',
     'intuitive, calm, private',
@@ -445,7 +448,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Victor',
-    'Finance student',
+    'eee',
     '💰',
     'The Showman',
     'proud, flashy, competitive',
@@ -456,7 +459,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Wen',
-    'Astronomy student',
+    'phy',
     '🌙',
     'The Observer',
     'quiet, precise, funny',
@@ -467,7 +470,7 @@ const STUDENT_ROWS: Row[] = [
   ],
   [
     'Zara',
-    'Honours student',
+    'math',
     '🏅',
     'The Prodigy',
     'brilliant, restless, direct',
@@ -476,15 +479,191 @@ const STUDENT_ROWS: Row[] = [
     'kind',
     'Which question did you find hard? Be honest.',
   ],
+  [
+    'Arif',
+    'cse',
+    '🕹️',
+    'The Night Owl',
+    'quiet, focused, sarcastic',
+    'Codes after midnight and likes people who skip the small talk.',
+    'honest humour',
+    'kind',
+    'It compiled at 4 a.m. Do not ask how.',
+  ],
+  [
+    'Bella',
+    'cse',
+    '🎀',
+    'The Organiser',
+    'cheerful, precise, kind',
+    'Runs every group chat and remembers who needs help.',
+    'kind honest',
+    'bold',
+    'I made a revision schedule. For both of us.',
+  ],
+  [
+    'Chen',
+    'cse',
+    '🧠',
+    'The Strategist',
+    'calm, competitive, clever',
+    'Thinks three moves ahead and respects a good challenge.',
+    'bold curious',
+    'kind',
+    'I bet you cannot solve this in one pass.',
+  ],
+  [
+    'Dina',
+    'eee',
+    '💡',
+    'The Tinkerer',
+    'inventive, messy, upbeat',
+    'Builds first and reads the manual later, if ever.',
+    'humour curious',
+    'honest',
+    'Smell that? Nothing to worry about. Probably.',
+  ],
+  [
+    'Eshan',
+    'eee',
+    '🔌',
+    'The Careful One',
+    'cautious, thorough, loyal',
+    'Checks every connection twice and appreciates patience.',
+    'kind honest',
+    'bold',
+    'Did you switch off the supply first?',
+  ],
+  [
+    'Freya',
+    'eee',
+    '🛰️',
+    'The Dreamer',
+    'ambitious, curious, warm',
+    'Wants to build satellites and loves a good what-if.',
+    'curious kind',
+    'humour',
+    'If you could send one thing into orbit, what would it be?',
+  ],
+  [
+    'Gita',
+    'math',
+    '🔢',
+    'The Patient One',
+    'gentle, steady, wise',
+    'Explains the same idea five ways without sighing.',
+    'kind curious',
+    'bold',
+    'Shall we go through it once more?',
+  ],
+  [
+    'Hugo',
+    'math',
+    '🎲',
+    'The Gambler',
+    'playful, daring, quick',
+    'Turns every question into a wager.',
+    'bold humour',
+    'honest',
+    'Two coffees says I finish the sheet first.',
+  ],
+  [
+    'Ines',
+    'math',
+    '📏',
+    'The Purist',
+    'exact, serious, frank',
+    'Wants a proof, not a feeling.',
+    'honest curious',
+    'humour',
+    'You said it is obvious. Show me.',
+  ],
+  [
+    'Jonas',
+    'phy',
+    '🧲',
+    'The Explainer',
+    'talkative, kind, eager',
+    'Cannot hear a question without drawing a diagram.',
+    'curious kind',
+    'bold',
+    'Do you know why the sky is blue? Sit down.',
+  ],
+  [
+    'Kira',
+    'phy',
+    '☄️',
+    'The Daredevil',
+    'bold, bright, impatient',
+    'Likes experiments that go bang and people who keep up.',
+    'bold humour',
+    'kind',
+    'The safety goggles are the boring part. Wear them anyway.',
+  ],
+  [
+    'Liam',
+    'phy',
+    '📡',
+    'The Doubter',
+    'skeptical, honest, dry',
+    'Trusts error bars more than enthusiasm.',
+    'honest curious',
+    'humour',
+    'What is the uncertainty on that claim?',
+  ],
+  [
+    'Mira',
+    'chem',
+    '🌸',
+    'The Peacemaker',
+    'soft-spoken, fair, caring',
+    'Smooths over lab arguments before they start.',
+    'kind curious',
+    'bold',
+    'You two looked tense. Everything all right?',
+  ],
+  [
+    'Noor',
+    'chem',
+    '⚗️',
+    'The Fireball',
+    'passionate, outspoken, brave',
+    'Says exactly what she thinks and expects the same.',
+    'bold honest',
+    'humour',
+    'Do you agree with the new lab rules? I do not.',
+  ],
+  [
+    'Oscar',
+    'chem',
+    '🧫',
+    'The Comedian',
+    'funny, relaxed, observant',
+    'Defuses exam panic with terrible puns.',
+    'humour kind',
+    'honest',
+    'I would tell a chemistry joke, but I might get no reaction.',
+  ],
+  [
+    'Pia',
+    'chem',
+    '📓',
+    'The Scholar',
+    'studious, curious, modest',
+    'Reads one chapter ahead and enjoys a thoughtful question.',
+    'curious honest',
+    'humour',
+    'What did you make of the last practical?',
+  ],
 ];
 
 /* ------------------------------------------------------------------------------------------ */
-/* Every professor who teaches a course.                                                      */
+/* Every professor who teaches a course. Their department comes from `FACULTY`.               */
 /* ------------------------------------------------------------------------------------------ */
 const PROFESSOR_ROWS: Row[] = [
   [
     'Prof. Okafor',
-    'Mathematics professor',
+    '',
     '➗',
     'The Encourager',
     'generous, rigorous, upbeat',
@@ -495,7 +674,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Lindqvist',
-    'Mathematics professor',
+    '',
     '📐',
     'The Minimalist',
     'terse, exact, fair',
@@ -506,7 +685,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Banerjee',
-    'Mathematics professor',
+    '',
     '🧮',
     'The Puzzle Lover',
     'playful, clever, patient',
@@ -517,7 +696,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Castellanos',
-    'Mathematics professor',
+    '',
     '∑',
     'The Taskmaster',
     'demanding, proud, just',
@@ -528,7 +707,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Nakamura',
-    'Sciences professor',
+    '',
     '🔬',
     'The Experimenter',
     'curious, methodical, kind',
@@ -539,18 +718,18 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Delacroix',
-    'Sciences professor',
+    '',
     '⚗️',
     'The Dramatist',
     'theatrical, witty, passionate',
     'Lectures as if it were opening night.',
     'humour bold',
     'honest',
-    'Did you see that reaction? Magnificent!',
+    'Did you see that spark? Magnificent!',
   ],
   [
     'Prof. Adeyemi',
-    'Sciences professor',
+    '',
     '🧬',
     'The Nurturer',
     'warm, thorough, protective',
@@ -561,7 +740,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Whitfield',
-    'Sciences professor',
+    '',
     '🔭',
     'The Absent-Minded',
     'brilliant, vague, gentle',
@@ -572,7 +751,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Sorensen',
-    'Sciences professor',
+    '',
     '🌡️',
     'The Sceptic',
     'dry, strict, honest',
@@ -583,7 +762,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Hartwell',
-    'English professor',
+    '',
     '📚',
     'The Classicist',
     'formal, eloquent, kindly',
@@ -594,7 +773,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Moreau',
-    'English professor',
+    '',
     '✒️',
     'The Provocateur',
     'sharp, ironic, lively',
@@ -605,7 +784,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Abernathy',
-    'English professor',
+    '',
     '🖋️',
     'The Confidant',
     'soft-spoken, perceptive, candid',
@@ -616,7 +795,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Karlsson',
-    'History professor',
+    '',
     '🗿',
     'The Storyteller',
     'rambling, vivid, jovial',
@@ -627,18 +806,18 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Villanueva',
-    'History professor',
+    '',
     '🏺',
     'The Activist',
     'passionate, principled, direct',
-    'Cares what history means now.',
+    'Cares what chemistry does to the world.',
     'honest bold',
     'humour',
-    'Which side would you have been on?',
+    'Would you pour that down the sink? Think first.',
   ],
   [
     'Prof. Oyelaran',
-    'History professor',
+    '',
     '📜',
     'The Sage',
     'calm, wise, patient',
@@ -649,18 +828,18 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Brandt',
-    'History professor',
+    '',
     '🧾',
     'The Stickler',
     'exacting, punctual, wry',
-    'Footnotes everything, including conversations.',
+    'Labels everything, including the labels.',
     'honest curious',
     'humour',
-    'You have a source for that, I trust.',
+    'You have a datasheet for that, I trust.',
   ],
   [
     'Prof. Turing-Reyes',
-    'Computing professor',
+    '',
     '🖥️',
     'The Visionary',
     'imaginative, intense, open',
@@ -671,7 +850,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Zhao',
-    'Computing professor',
+    '',
     '⌨️',
     'The Engineer',
     'practical, brisk, fair',
@@ -682,7 +861,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Lovelace-Kim',
-    'Computing professor',
+    '',
     '🧩',
     'The Coach',
     'encouraging, energetic, funny',
@@ -693,7 +872,7 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Petrov',
-    'Computing professor',
+    '',
     '🔐',
     'The Cryptic',
     'secretive, dry, clever',
@@ -704,29 +883,29 @@ const PROFESSOR_ROWS: Row[] = [
   ],
   [
     'Prof. Marchetti',
-    'Economics professor',
+    '',
     '💶',
     'The Charmer',
     'sociable, witty, shrewd',
-    'Does economics over espresso.',
+    'Explains circuits over espresso.',
     'humour bold',
     'honest',
-    'There is no free lunch, but there is coffee.',
+    'There is no free energy, but there is coffee.',
   ],
   [
     'Prof. Osei',
-    'Economics professor',
+    '',
     '📉',
     'The Pragmatist',
     'grounded, generous, frank',
-    'Asks what the numbers mean for real people.',
+    'Asks what a design is good for in real life.',
     'honest kind',
     'bold',
     'What problem are you actually trying to solve?',
   ],
   [
     'Prof. Fairbanks',
-    'Economics professor',
+    '',
     '🏦',
     'The Old Guard',
     'traditional, stern, loyal',
@@ -864,20 +1043,21 @@ const slug = (name: string): string =>
 export const FRIEND_PEOPLE: Person[] = NPC_IDS.map((id) => {
   const f = FRIENDS[id];
   const N = NPCS[id];
-  return person(id, 'friend', [
-    N.name,
-    `${N.role} · ${N.major}`,
-    N.emoji,
-    f[0],
-    f[1],
-    f[2],
-    f[3],
-    f[4],
-    f[5],
-  ]);
+  const title = `${N.role} · ${DEPARTMENTS[N.major].short} student`;
+  const p = person(id, 'friend', [N.name, title, N.emoji, f[0], f[1], f[2], f[3], f[4], f[5]]);
+  return { ...p, dept: N.major };
 });
-export const STUDENTS: Person[] = STUDENT_ROWS.map((r) => person(`s_${slug(r[0])}`, 'student', r));
-export const PROFESSORS: Person[] = PROFESSOR_ROWS.map((r) => person(`p_${slug(r[0])}`, 'professor', r));
+export const STUDENTS: Person[] = STUDENT_ROWS.map((r) => {
+  const dept = r[1] as MajorId;
+  const p = person(`s_${slug(r[0])}`, 'student', r);
+  return { ...p, dept, title: `${DEPARTMENTS[dept].short} student` };
+});
+export const PROFESSORS: Person[] = PROFESSOR_ROWS.map((r) => {
+  const dept = DEPT_IDS.find((d) => FACULTY[d].includes(r[0]));
+  if (!dept) throw new Error(`${r[0]} belongs to no department`);
+  const p = person(`p_${slug(r[0])}`, 'professor', r);
+  return { ...p, dept, title: `${DEPARTMENTS[dept].short} professor` };
+});
 export const STAFF: Person[] = STAFF_ROWS.map(([id, r]) => person(id, 'staff', r));
 
 /** Everybody, by id. A friend's person id is their `NpcId`. */
@@ -888,10 +1068,16 @@ export const PERSON_IDS: PersonId[] = Object.keys(PEOPLE);
 export const professorId = (name: string): PersonId | null =>
   PROFESSORS.find((p) => p.name === name)?.id ?? null;
 
-/** `count` different classmates in a random order (at most all of them). */
-export function pickStudents(rng: Rng, count: number): PersonId[] {
+/** The majors a classmate can belong to, for filtering. */
+export const studentsOf = (major: MajorId): Person[] => STUDENTS.filter((s) => s.dept === major);
+
+/**
+ * `count` different classmates in a random order (at most all of them). With `majors`, only students of those
+ * departments: the people who really take that class.
+ */
+export function pickStudents(rng: Rng, count: number, majors: readonly MajorId[] = MAJOR_IDS): PersonId[] {
   return shuffle(
-    STUDENTS.map((p) => p.id),
+    STUDENTS.filter((p) => majors.includes(p.dept as MajorId)).map((p) => p.id),
     rng,
   ).slice(0, count);
 }

@@ -57,13 +57,14 @@ export function buildCampusGeometry() {
   path(-25, -4.5, -9.8, -6.2);
   path(4.5, 25, -9.8, -6.2);
   path(-25, -4.5, 12.2, 15.8);
-  path(4.5, 24, 24.2, 27.8); // to the Club House
+  path(4.5, 24, 13.2, 16.8); // to the Club House
+  path(4.5, 25, 36.7, 40.3); // Physics Hall
   path(-12, 12, -25, -20.5); // front steps area
   path(12.5, 17.5, -21, -16); // roof tower landing
-  path(-25, -4.5, 36.2, 39.8); // Smith Hall
-  path(-38.8, -35.2, -26, -17.2); // Newton Hall
+  path(-25, -4.5, 36.2, 39.8); // EEE Hall
+  path(-38.8, -35.2, -26, -17.2); // Math Hall
   path(-38.8, -4.5, -20.8, -17.2);
-  path(35.2, 38.8, -26, -17.2); // Lovelace Hall
+  path(35.2, 38.8, -26, -17.2); // CSE Hall
   path(4.5, 38.8, -20.8, -17.2);
   Gd.cyl(PLAZA.x, 0.03, PLAZA.z, PLAZA.r + 0.5, PLAZA.r + 0.5, 0.05, paveEdge, 40);
   Gd.cyl(PLAZA.x, 0.06, PLAZA.z, PLAZA.r, PLAZA.r, 0.05, paveC, 40);
@@ -104,7 +105,7 @@ export function buildCampusGeometry() {
             y < b.door.h + 2.8
           )
             continue;
-          if (b.id === 'main' && f.nz === 1 && Math.abs(x - ROOF_STAIRS.x) < 3.4 && y < 12) continue;
+          if (b.id === 'hum' && f.nz === 1 && Math.abs(x - ROOF_STAIRS.x) < 3.4 && y < 12) continue;
           const px = x + f.nx * 0.05,
             pz = z + f.nz * 0.05;
           if (alongX) {
@@ -175,7 +176,7 @@ export function buildCampusGeometry() {
       len = ridgeAlongX ? w : d;
     const pitched = (rh: number, col: number) =>
       S.roof(cx, h + rh / 2 - 0.1, cz, span + 1.6, rh, len + 1.6, col, ridgeAlongX ? Math.PI / 2 : 0);
-    if (b.id === 'main') {
+    if (b.id === 'hum') {
       S.box(cx, h + 0.15, cz, w + 0.8, 0.5, d + 0.8, b.roof);
       for (const [px, pz, pw, pd] of [
         [0, d / 2 + 0.2, w + 1, 0.4],
@@ -275,7 +276,7 @@ export function buildCampusGeometry() {
             0xf4ecda,
             10,
           );
-    } else if (b.id === 'lab') {
+    } else if (b.id === 'chem') {
       pitched(2.2, b.roof);
       const fy = h + 2.4;
       S.cyl(cx, fy + 1.1, cz, 0.45, 1.5, 2.2, 0xbfeeee, 14);
@@ -284,8 +285,8 @@ export function buildCampusGeometry() {
       LG.cyl(cx, fy + 0.8, cz, 0.3, 1.25, 1.4, 0x6dffc0, 12);
       S.cyl(cx - 4.5, h + 3, cz - 2, 0.1, 0.1, 5, 0x777777, 6);
       S.cyl(cx - 4.5, h + 5.6, cz - 2, 1.0, 0.05, 0.5, 0xdddddd, 12, true, 0.6, 0);
-    } else if (b.id === 'math' || b.id === 'cs' || b.id === 'econ') {
-      // flat roof with a parapet and a landmark: a golden pi, a radio mast and dish, or a stack of coins
+    } else if (b.id === 'math' || b.id === 'cse' || b.id === 'eee' || b.id === 'phy') {
+      // flat roof with a parapet and a landmark: a golden pi, a mast and dish, a pylon, or an observatory dome
       S.box(cx, h + 0.35, cz, w + 0.8, 0.7, d + 0.8, b.roof);
       for (const [px, pz, pw, pd] of [
         [0, d / 2 + 0.4, w + 1, 0.4],
@@ -298,14 +299,28 @@ export function buildCampusGeometry() {
         S.box(cx, h + 4.6, cz, 5.4, 0.7, 0.7, 0xe3b53c);
         S.box(cx - 1.7, h + 2.8, cz, 0.7, 3.6, 0.7, 0xe3b53c);
         S.box(cx + 1.7, h + 2.8, cz, 0.7, 3.6, 0.7, 0xe3b53c);
-      } else if (b.id === 'cs') {
+      } else if (b.id === 'cse') {
         S.cyl(cx + 4, h + 4.5, cz, 0.12, 0.16, 7.6, 0xcccccc, 6);
         LG.cyl(cx + 4, h + 8.4, cz, 0.3, 0.3, 0.5, 0xff5a4a, 8);
         S.cyl(cx - 3, h + 2.2, cz, 2.2, 0.4, 0.5, 0xe8eef0, 14, true, 0.9, 0);
         S.cyl(cx - 3, h + 1.2, cz, 0.12, 0.12, 1.4, 0x888888, 6);
+      } else if (b.id === 'eee') {
+        // a little transmission pylon with three cross-arms and lamps at the tips
+        for (const o of [-1, 1])
+          S.cyl(cx + o * 0.9, h + 4, cz, 0.1, 0.14, 7.2, 0xb8bec6, 6, true, 0, o * 0.12);
+        for (let i = 0; i < 3; i++) {
+          const y = h + 4.2 + i * 1.5;
+          const half = 3.2 - i * 0.7;
+          S.box(cx, y, cz, half * 2, 0.18, 0.18, 0x8e949c);
+          for (const o of [-1, 1]) LG.sphere(cx + o * half, y - 0.35, cz, 0.24, 0xffd23a, 8, 6);
+        }
+        LG.sphere(cx, h + 8.1, cz, 0.35, 0xff5a4a, 8, 6);
       } else {
-        for (let i = 0; i < 4; i++) S.cyl(cx, h + 1.3 + i * 0.45, cz, 1.9, 1.9, 0.4, 0xe3b53c, 18);
-        S.cyl(cx, h + 3.3, cz, 1.9, 1.9, 0.12, 0xfff2b8, 18);
+        // an observatory dome with its slit and telescope
+        S.cyl(cx, h + 1.9, cz, 3.4, 3.4, 2.2, 0xd9d2e8, 20);
+        S.sphere(cx, h + 3.0, cz, 3.3, 0xc9ced8, 18, 10, 0.85, false);
+        S.box(cx - 1.6, h + 4.6, cz, 2.6, 2.2, 0.8, 0x3a3350);
+        S.cyl(cx - 3.1, h + 5.4, cz, 0.35, 0.5, 3.0, 0x7a4fb5, 10, true, 0, 0.9);
       }
     } else if (b.id === 'club') {
       pitched(2.4, b.roof);
@@ -326,7 +341,7 @@ export function buildCampusGeometry() {
       for (const o of [-1, 1])
         S.box(b.door.x + b.door.dx * 1.3, 0.8, b.door.z + o * 4.2, 1, 1.6, 0.9, 0x2a2a35);
     }
-    if (b.id !== 'main') S.box(cx, h + 0.1, cz, w + 0.9, 0.35, d + 0.9, b.trim);
+    if (b.id !== 'hum') S.box(cx, h + 0.1, cz, w + 0.9, 0.35, d + 0.9, b.trim);
   }
   for (const b of BUILDINGS) building(b);
 

@@ -4,7 +4,7 @@ import { COURSE_BANKS } from '../src/core/qbank';
 import { COURSE_GENS, GENS, type GenId } from '../src/core/qgen';
 import { HISTORY_CAP, courseQuestion, optionsFor, targetTier } from '../src/core/questions';
 import * as St from '../src/core/state';
-import { CLUB_IDS, NPC_IDS, type GameState } from '../src/core/types';
+import { CLUB_IDS, MAJOR_IDS, NPC_IDS, type GameState } from '../src/core/types';
 import { hashStr, mulberry32 } from '../src/core/util';
 import { PUZZLES, choosePuzzles } from '../src/minigames/chessPuzzles';
 import { ARGUMENTS, FALLACIES, chooseArguments } from '../src/minigames/debateBank';
@@ -15,17 +15,16 @@ const atDay = (day: number, period = 0): GameState => Object.assign(fresh(), { d
 describe('course question banks', () => {
   const courses = Object.values(COURSES);
 
-  it('has a hand-written bank for every one of the 71 courses, and none for courses that do not exist', () => {
-    expect(courses.length).toBe(71);
-    for (const c of courses) expect(COURSE_BANKS[c.name], c.name).toBeDefined();
-    const names = new Set(courses.map((c) => c.name));
-    for (const k of Object.keys(COURSE_BANKS))
-      expect(names.has(k), `bank for unknown course ${k}`).toBe(true);
+  it('has a hand-written bank for every course, and no bank that no course uses', () => {
+    expect(courses.length).toBe(138);
+    for (const c of courses) expect(COURSE_BANKS[c.bank], c.name).toBeDefined();
+    const used = new Set(courses.map((c) => c.bank));
+    for (const k of Object.keys(COURSE_BANKS)) expect(used.has(k), `unused bank ${k}`).toBe(true);
   });
 
   it('gives every course enough questions in all four difficulty tiers', () => {
     for (const c of courses) {
-      const rows = COURSE_BANKS[c.name];
+      const rows = COURSE_BANKS[c.bank];
       expect(rows.length, c.name).toBeGreaterThanOrEqual(12);
       for (const tier of [1, 2, 3, 4]) {
         expect(rows.filter((r) => r[0] === tier).length, `${c.name} tier ${tier}`).toBeGreaterThanOrEqual(3);
@@ -35,7 +34,7 @@ describe('course question banks', () => {
 
   it('has well-formed rows: four distinct options, a real answer, no duplicate questions in a course', () => {
     for (const c of courses) {
-      const rows = COURSE_BANKS[c.name];
+      const rows = COURSE_BANKS[c.bank];
       const seen = new Set<string>();
       for (const [tier, q, a, w1, w2, w3] of rows) {
         expect([1, 2, 3, 4], `${c.name}: ${q}`).toContain(tier);
@@ -50,7 +49,7 @@ describe('course question banks', () => {
   });
 
   it('only wires generators to courses that exist', () => {
-    const names = new Set(courses.map((c) => c.name));
+    const names = new Set(courses.map((c) => c.bank));
     for (const [name, gens] of Object.entries(COURSE_GENS)) {
       expect(names.has(name), name).toBe(true);
       for (const g of gens) expect(GENS[g], `${name} -> ${g}`).toBeDefined();
@@ -110,7 +109,7 @@ describe('question generators', () => {
 
 describe('course questions are relevant, get harder and do not repeat', () => {
   const calc1 = Object.values(COURSES).find((c) => c.name === 'Calculus I')!;
-  const capstone = Object.values(COURSES).find((c) => c.name === 'Capstone Project')!;
+  const capstone = Object.values(COURSES).find((c) => c.name === 'CSE Thesis I')!;
 
   it('tag each question with its course, and ask something about that course', () => {
     const rng = mulberry32(5);
@@ -169,8 +168,8 @@ describe('course questions are relevant, get harder and do not repeat', () => {
 
   it('never repeat a question until the whole pool is used up', () => {
     // a course with no generator, so every question comes from the written bank
-    const course = Object.values(COURSES).find((c) => c.name === 'British Literature')!;
-    const bank = COURSE_BANKS[course.name];
+    const course = Object.values(COURSES).find((c) => c.name === 'Sociology')!;
+    const bank = COURSE_BANKS[course.bank];
     const rng = mulberry32(31);
     const hist: number[] = [];
     const asked = new Set<string>();
@@ -186,7 +185,7 @@ describe('course questions are relevant, get harder and do not repeat', () => {
 
   it('remember what was asked across quizzes through the saved history', () => {
     const s = fresh();
-    const course = Object.values(COURSES).find((c) => c.name === 'Ethics & Philosophy')!;
+    const course = Object.values(COURSES).find((c) => c.name === 'Engineering Ethics')!;
     const first: string[] = [];
     const second: string[] = [];
     const rng = mulberry32(3);
@@ -359,14 +358,15 @@ describe('club activities', () => {
 
 describe('the curriculum still lines up with the question system', () => {
   it('every course in every semester can supply a question at every level of its semester', () => {
-    for (let sem = 0; sem < TERMS; sem++) {
-      for (const id of CURRICULUM[sem]) {
-        for (const level of [1, 2.2, 3.4, 4.4]) {
-          const q = courseQuestion(id, level, mulberry32(sem * 97 + level * 13), [], new Set());
-          expect(q.course).toBe(id);
-          expect(q.subject).toBe(COURSES[id].area);
+    for (const major of MAJOR_IDS)
+      for (let sem = 0; sem < TERMS; sem++) {
+        for (const id of CURRICULUM[major][sem]) {
+          for (const level of [1, 2.2, 3.4, 4.4]) {
+            const q = courseQuestion(id, level, mulberry32(sem * 97 + level * 13), [], new Set());
+            expect(q.course).toBe(id);
+            expect(q.subject).toBe(COURSES[id].area);
+          }
         }
       }
-    }
   });
 });

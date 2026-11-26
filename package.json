@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Last Bell High - a 3D high school life game (Vite + TypeScript + Three.js)",
+  "description": "Engineers of the Elite - a 3D engineering university life game (Vite + TypeScript + Three.js)",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

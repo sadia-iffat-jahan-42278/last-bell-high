@@ -14,17 +14,16 @@ import type {
   SubjectId,
 } from './types';
 
-export { BANK } from './bank';
 export { NPCS } from './npcs';
 export * from './courses';
 
 export const SUBJECTS: Record<SubjectId, { name: string; icon: string; color: string }> = {
-  math: { name: 'Math', icon: '➗', color: '#ff7a59' },
-  science: { name: 'Science', icon: '🔬', color: '#2ec4b6' },
-  english: { name: 'English', icon: '📖', color: '#9b6bff' },
-  history: { name: 'History', icon: '🏛️', color: '#f0b429' },
-  cs: { name: 'Computing', icon: '💻', color: '#3d7be0' },
-  econ: { name: 'Economics', icon: '📈', color: '#e0762a' },
+  cse: { name: 'Computing', icon: '💻', color: '#1aa6a6' },
+  eee: { name: 'Electrical', icon: '⚡', color: '#e0a02a' },
+  math: { name: 'Mathematics', icon: '📐', color: '#3d7be0' },
+  phy: { name: 'Physics', icon: '🔭', color: '#7a4fb5' },
+  chem: { name: 'Chemistry', icon: '🧪', color: '#35a85a' },
+  hum: { name: 'Humanities', icon: '🏛️', color: '#c23b3b' },
 };
 export const SUBJECT_IDS = Object.keys(SUBJECTS) as SubjectId[];
 

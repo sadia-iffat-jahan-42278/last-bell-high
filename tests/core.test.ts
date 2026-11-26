@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AREA_DEPT,
-  BANK,
   COURSES,
   CURRICULUM,
   DAYS_PER_TERM,
+  DEPARTMENTS,
   EXAM_HALL,
   GRADES,
   LECTURE_DAYS,
@@ -19,11 +18,12 @@ import {
   courseInRoom,
   finalPhases,
   gradeOf,
+  roomCode,
   semesterTimetable,
 } from '../src/core/data';
 import { makeQuestion } from '../src/core/questions';
 import * as St from '../src/core/state';
-import type { GameState } from '../src/core/types';
+import { DEPT_IDS, MAJOR_IDS, type GameState } from '../src/core/types';
 import { mulberry32 } from '../src/core/util';
 
 const fresh = (): GameState => St.newState('Tester', St.defaultLook());
@@ -56,17 +56,8 @@ describe('question generation', () => {
     const rng = mulberry32(5);
     const used = new Set<string>();
     const seen = new Set<string>();
-    for (let i = 0; i < 6; i++) seen.add(makeQuestion('science', 1, rng, used).q);
+    for (let i = 0; i < 6; i++) seen.add(makeQuestion('phy', 1, rng, used).q);
     expect(seen.size).toBe(6);
-  });
-
-  it('every bank question has the right answer outside its wrong list', () => {
-    for (const pool of Object.values(BANK)) {
-      for (const it of pool) {
-        expect(it.w.includes(it.a), it.q).toBe(false);
-        expect(it.w.length, it.q).toBeGreaterThanOrEqual(3);
-      }
-    }
   });
 });
 
@@ -109,7 +100,7 @@ describe('calendar', () => {
   it('reports the lecture course and its area, and undefined outside lectures', () => {
     const s = atDay(0, 0);
     const id = St.classCourse(s)!;
-    expect(CURRICULUM[0]).toContain(id);
+    expect(CURRICULUM.cse[0]).toContain(id);
     expect(St.classSubject(s)).toBe(COURSES[id].area);
     const mid = atDay(MIDTERM_DAY, MIDTERM_PERIOD);
     expect(St.classCourse(mid)).toBe(St.testCourse(mid));
@@ -119,68 +110,127 @@ describe('calendar', () => {
   });
 });
 
-describe('curriculum and timetable', () => {
-  it('has 8-10 courses in each of the 8 semesters', () => {
-    expect(CURRICULUM).toHaveLength(8);
-    for (const [sem, ids] of CURRICULUM.entries()) {
-      expect(ids.length, `semester ${sem + 1}`).toBeGreaterThanOrEqual(8);
-      expect(ids.length, `semester ${sem + 1}`).toBeLessThanOrEqual(10);
-      for (const id of ids) {
-        expect(COURSES[id].sem).toBe(sem);
-        expect(COURSES[id].year).toBe(Math.floor(sem / 2) + 1);
-        expect(COURSES[id].tier).toBeGreaterThanOrEqual(1);
-        expect(COURSES[id].tier).toBeLessThanOrEqual(4);
-      }
-    }
-    expect(TOTAL_COURSES).toBe(CURRICULUM.reduce((a, c) => a + c.length, 0));
+describe('departments and curricula', () => {
+  it('has six departments, five of which students can join', () => {
+    expect([...DEPT_IDS]).toEqual(['cse', 'eee', 'math', 'phy', 'chem', 'hum']);
+    expect([...MAJOR_IDS]).toEqual(['cse', 'eee', 'math', 'phy', 'chem']);
+    expect(DEPT_IDS.map((d) => DEPARTMENTS[d].hall)).toEqual([
+      'CSE Hall',
+      'EEE Hall',
+      'Math Hall',
+      'Physics Hall',
+      'Chemistry Hall',
+      'Humanities Hall',
+    ]);
   });
 
-  it('gives every course a unique id, a professor and a room', () => {
-    const ids = Object.keys(COURSES);
-    expect(new Set(ids).size).toBe(ids.length);
-    for (const c of Object.values(COURSES)) {
+  it('gives each major eight courses in each of the eight semesters, with none taken twice', () => {
+    for (const major of MAJOR_IDS) {
+      expect(CURRICULUM[major]).toHaveLength(TERMS);
+      for (const [sem, ids] of CURRICULUM[major].entries()) {
+        expect(ids.length, `${major} semester ${sem + 1}`).toBe(8);
+        for (const id of ids) {
+          expect(COURSES[id].sem).toBe(sem);
+          expect(COURSES[id].year).toBe(Math.floor(sem / 2) + 1);
+          expect(COURSES[id].majors).toContain(major);
+          expect(COURSES[id].tier).toBeGreaterThanOrEqual(1);
+          expect(COURSES[id].tier).toBeLessThanOrEqual(4);
+        }
+      }
+      const all = CURRICULUM[major].flat();
+      expect(new Set(all).size, major).toBe(all.length);
+    }
+  });
+
+  it('gives different departments different curricula', () => {
+    for (const a of MAJOR_IDS)
+      for (const b of MAJOR_IDS) {
+        if (a >= b) continue;
+        const mine = new Set(CURRICULUM[a].flat());
+        const shared = CURRICULUM[b].flat().filter((id) => mine.has(id)).length;
+        // maths, basic science and humanities are shared; at least 22 of the 64 courses must differ
+        expect(shared, `${a} and ${b} share ${shared} courses`).toBeLessThanOrEqual(42);
+        for (let sem = 0; sem < TERMS; sem++)
+          expect([...CURRICULUM[a][sem]].sort(), `${a}/${b} semester ${sem + 1}`).not.toEqual(
+            [...CURRICULUM[b][sem]].sort(),
+          );
+      }
+  });
+
+  it('makes every student attend other departments, and Humanities teach everyone', () => {
+    for (const major of MAJOR_IDS) {
+      const courses = CURRICULUM[major].flat().map((id) => COURSES[id]);
+      const own = courses.filter((c) => c.area === major);
+      expect(own.length, `${major} own courses`).toBeGreaterThanOrEqual(18);
+      expect(new Set(courses.map((c) => c.area)).size, `${major} departments`).toBeGreaterThanOrEqual(5);
+      expect(courses.filter((c) => c.area === 'hum').length, `${major} humanities`).toBeGreaterThanOrEqual(8);
+      // every course of a department's final-year project belongs to it
+      for (const c of courses.filter((x) => / Thesis /.test(x.name))) expect(c.area).toBe(major);
+    }
+  });
+
+  it('has no course that nobody takes', () => {
+    for (const c of Object.values(COURSES)) expect(c.majors.length, c.name).toBeGreaterThan(0);
+    expect(TOTAL_COURSES).toBe(new Set(MAJOR_IDS.flatMap((m) => CURRICULUM[m].flat())).size);
+  });
+
+  it('gives every course a unique id, name and code, and a professor of its own department', () => {
+    const list = Object.values(COURSES);
+    for (const key of ['id', 'name', 'code'] as const)
+      expect(new Set(list.map((c) => c[key])).size, key).toBe(list.length);
+    for (const c of list) {
       expect(c.prof.startsWith('Prof.'), c.id).toBe(true);
-      expect(c.room.length).toBeGreaterThan(2);
-      expect(c.building).toBe(AREA_DEPT[c.area]);
+      expect(c.code.startsWith(DEPARTMENTS[c.area].code + ' '), c.code).toBe(true);
     }
   });
 
   it('meets every course at least twice, never twice in one day, with a midterm and finals', () => {
-    for (let sem = 0; sem < TERMS; sem++) {
-      const t = semesterTimetable(sem);
-      expect(t).toHaveLength(LECTURE_DAYS + 1);
-      const meets: Record<string, number> = {};
-      for (let d = 0; d < LECTURE_DAYS; d++) {
-        const today: string[] = [];
-        for (const p of LECTURE_PERIODS) {
-          const e = t[d][p];
-          expect(e, `sem ${sem} day ${d} period ${p}`).not.toBeNull();
-          if (e === 'TEST') {
-            expect(d).toBe(MIDTERM_DAY);
-            expect(p).toBe(MIDTERM_PERIOD);
-          } else {
-            expect(CURRICULUM[sem]).toContain(e);
-            today.push(e as string);
-            meets[e as string] = (meets[e as string] ?? 0) + 1;
+    for (const major of MAJOR_IDS)
+      for (let sem = 0; sem < TERMS; sem++) {
+        const t = semesterTimetable(major, sem);
+        expect(t).toHaveLength(LECTURE_DAYS + 1);
+        const meets: Record<string, number> = {};
+        for (let d = 0; d < LECTURE_DAYS; d++) {
+          const today: string[] = [];
+          for (const p of LECTURE_PERIODS) {
+            const e = t[d][p];
+            expect(e, `${major} sem ${sem} day ${d} period ${p}`).not.toBeNull();
+            if (e === 'TEST') {
+              expect(d).toBe(MIDTERM_DAY);
+              expect(p).toBe(MIDTERM_PERIOD);
+            } else {
+              expect(CURRICULUM[major][sem]).toContain(e);
+              today.push(e as string);
+              meets[e as string] = (meets[e as string] ?? 0) + 1;
+            }
           }
+          expect(new Set(today).size, `${major} sem ${sem} day ${d}`).toBe(today.length);
+          expect(t[d][2]).toBeNull(); // lunch
         }
-        expect(new Set(today).size, `sem ${sem} day ${d}`).toBe(today.length);
-        expect(t[d][2]).toBeNull(); // lunch
+        for (const id of CURRICULUM[major][sem])
+          expect(meets[id], `${id} for ${major}`).toBeGreaterThanOrEqual(2);
+        expect(t[LECTURE_DAYS][0]).toBe('FINAL');
+        expect(t[LECTURE_DAYS][1]).toBe('FINAL');
       }
-      for (const id of CURRICULUM[sem]) expect(meets[id], `${id} in sem ${sem}`).toBeGreaterThanOrEqual(2);
-      expect(t[LECTURE_DAYS][0]).toBe('FINAL');
-      expect(t[LECTURE_DAYS][1]).toBe('FINAL');
-    }
   });
 
-  it('is deterministic and the finals boss tests up to four of the semester’s areas', () => {
-    expect(semesterTimetable(3)).toEqual(semesterTimetable(3));
-    for (let sem = 0; sem < TERMS; sem++) {
-      const phases = finalPhases(sem);
-      expect(phases.length).toBeGreaterThanOrEqual(2);
-      expect(phases.length).toBeLessThanOrEqual(4);
-      for (const a of phases) expect(CURRICULUM[sem].some((id) => COURSES[id].area === a)).toBe(true);
-    }
+  it('is deterministic and the finals boss tests up to four of the semester’s departments', () => {
+    expect(semesterTimetable('eee', 3)).toEqual(semesterTimetable('eee', 3));
+    for (const major of MAJOR_IDS)
+      for (let sem = 0; sem < TERMS; sem++) {
+        const phases = finalPhases(major, sem);
+        expect(phases.length).toBeGreaterThanOrEqual(2);
+        expect(phases.length).toBeLessThanOrEqual(4);
+        for (const a of phases)
+          expect(CURRICULUM[major][sem].some((id) => COURSES[id].area === a)).toBe(true);
+      }
+  });
+
+  it('follows the player’s own department', () => {
+    const s = St.newState('Tester', St.defaultLook(), St.defaultMeta(), 'male', 'chem');
+    expect(St.courses(s)).toEqual(CURRICULUM.chem[0]);
+    expect(CURRICULUM.chem[0]).toContain(St.classCourse(s));
+    expect(St.courses(s)).not.toEqual(CURRICULUM.cse[0]);
   });
 });
 
@@ -302,7 +352,7 @@ describe('grades and rank', () => {
 
   it('weights lecture 30 / midterm 30 / final 40 and renormalises missing parts', () => {
     const s = fresh();
-    const [a, b] = CURRICULUM[0];
+    const [a, b] = CURRICULUM.cse[0];
     St.recordScore(s, 'class', a, 1);
     expect(St.courseScore(s, 0, a)).toBeCloseTo(100);
     St.recordScore(s, 'test', a, 0);
@@ -312,17 +362,17 @@ describe('grades and rank', () => {
     expect(St.courseScore(s, 0, b)).toBeNull();
   });
 
-  it('has no rank until something is graded, then ranks against 24 classmates', () => {
+  it('has no rank until something is graded, then ranks against 40 classmates', () => {
     const s = fresh();
     expect(St.rankOf(s, 0)).toBeNull();
-    for (const id of CURRICULUM[0]) St.recordScore(s, 'class', id, 1);
+    for (const id of CURRICULUM.cse[0]) St.recordScore(s, 'class', id, 1);
     const top = St.rankOf(s, 0);
     expect(top).not.toBeNull();
-    expect(top!.total).toBe(25);
+    expect(top!.total).toBe(41);
     expect(top!.rank).toBe(1);
     const s2 = fresh();
-    for (const id of CURRICULUM[0]) St.recordScore(s2, 'class', id, 0);
-    expect(St.rankOf(s2, 0)!.rank).toBe(25);
+    for (const id of CURRICULUM.cse[0]) St.recordScore(s2, 'class', id, 0);
+    expect(St.rankOf(s2, 0)!.rank).toBe(41);
   });
 
   it('maps scores to a 4.0 GPA', () => {
@@ -336,7 +386,7 @@ describe('grades and rank', () => {
     const s = fresh();
     for (let t = 0; t < TERMS; t++) {
       s.day = t * DAYS_PER_TERM;
-      for (const id of CURRICULUM[t]) St.recordScore(s, 'final', id, 1);
+      for (const id of CURRICULUM.cse[t]) St.recordScore(s, 'final', id, 1);
     }
     const o = St.overallRank(s);
     expect(o).not.toBeNull();
@@ -419,14 +469,14 @@ describe('saves', () => {
     expect(St.migrateSave('hi')).toBeNull();
     expect(St.migrateSave({ v: 3 })).toBeNull();
     expect(St.migrateSave({ v: 1 })).toBeNull(); // old high-school saves are not usable
-    expect(St.migrateSave({ v: 2 })).toBeNull();
+    expect(St.migrateSave({ ...fresh(), v: 2 })).toBeNull(); // saves from the old set of courses
   });
 
   it('starts with mastery for every subject area and 16 friends', () => {
     const s = fresh();
     expect(Object.keys(s.mastery).sort()).toEqual([...SUBJECT_IDS].sort());
     expect(Object.keys(s.friends)).toHaveLength(16);
-    expect(s.v).toBe(2);
+    expect(s.v).toBe(3);
   });
 
   it('round-trips a full save unchanged', () => {
@@ -451,54 +501,48 @@ describe('saves', () => {
   });
 });
 
-describe('department buildings', () => {
+describe('department halls', () => {
   const courses = Object.values(COURSES);
-  const depts = ['main', 'math', 'cs', 'lab', 'econ'] as const;
 
-  it('puts every course in one of five department buildings, matched to its subject', () => {
-    for (const c of courses) expect(depts, c.name).toContain(c.building);
-    expect(new Set(courses.map((c) => c.building)).size).toBe(5);
-    for (const c of courses) {
-      if (c.area === 'math') expect(c.building).toBe('math');
-      if (c.area === 'cs') expect(c.building).toBe('cs');
-      if (c.area === 'science') expect(c.building).toBe('lab');
-      if (c.area === 'econ') expect(c.building).toBe('econ');
-      if (c.area === 'english' || c.area === 'history') expect(c.building).toBe('main');
-    }
+  it('holds every course in the hall of the department that teaches it', () => {
+    for (const c of courses) expect(c.building, c.name).toBe(c.area);
+    expect(new Set(courses.map((c) => c.building)).size).toBe(DEPT_IDS.length);
   });
 
-  it('gives every course its own classroom: a floor from 1 to 5 and a door slot, never shared', () => {
+  it('gives each course a classroom that no other course of its semester uses', () => {
     const seen = new Set<string>();
     for (const c of courses) {
       expect(c.floor, c.name).toBeGreaterThanOrEqual(1);
       expect(c.floor, c.name).toBeLessThanOrEqual(5);
       expect(c.slot, c.name).toBeGreaterThanOrEqual(0);
-      expect(c.slot, c.name).toBeLessThanOrEqual(4); // slot 5 is kept free for the Grand Exam Hall
-      const key = `${c.building}/${c.floor}/${c.slot}`;
+      expect(c.slot, c.name).toBeLessThanOrEqual(4); // slot 5 is the staff room (the exam hall in Humanities)
+      const key = `${c.sem}/${c.building}/${c.floor}/${c.slot}`;
       expect(seen.has(key), `${c.name} shares a room (${key})`).toBe(false);
       seen.add(key);
-      expect(c.room, c.name).toMatch(/^[A-Z]{3}-\d{3}$/);
-      expect(c.room.slice(4, 5), `${c.name}: the room number starts with its floor`).toBe(String(c.floor));
+      expect(c.room).toBe(roomCode(c.building, c.floor, c.slot));
+      expect(c.room, c.name).toMatch(/^[A-Z]{3,4}-\d{3}$/);
     }
   });
 
   it('puts lower-year courses on lower floors', () => {
-    for (const d of depts) {
+    for (const d of DEPT_IDS) {
       const list = courses.filter((c) => c.building === d);
-      for (let i = 1; i < list.length; i++) {
-        expect(list[i].sem, `${d} order`).toBeGreaterThanOrEqual(list[i - 1].sem);
-        expect(
-          list[i].floor,
-          `${list[i].name} should not be below ${list[i - 1].name}`,
-        ).toBeGreaterThanOrEqual(list[i - 1].floor);
-      }
+      for (const a of list)
+        for (const b of list)
+          if (a.year < b.year) expect(a.floor, `${a.name} / ${b.name}`).toBeLessThanOrEqual(b.floor);
     }
   });
 
-  it('finds the course in a room, and keeps the Grand Exam Hall in Hale Hall on the ground floor', () => {
-    for (const c of courses) expect(courseInRoom(c.building, c.floor, c.slot)?.id).toBe(c.id);
-    expect(courseInRoom('main', EXAM_HALL.floor, EXAM_HALL.slot)).toBeNull();
-    expect(EXAM_HALL.building).toBe('main');
+  it('shows the player their own course in a shared room, and keeps the exam hall free', () => {
+    for (const major of MAJOR_IDS)
+      for (const id of CURRICULUM[major].flat()) {
+        const c = COURSES[id];
+        expect(courseInRoom(c.building, c.floor, c.slot, major, c.sem)?.id).toBe(id);
+      }
+    for (const major of MAJOR_IDS)
+      for (let sem = 0; sem < TERMS; sem++)
+        expect(courseInRoom('hum', EXAM_HALL.floor, EXAM_HALL.slot, major, sem)).toBeNull();
+    expect(EXAM_HALL.building).toBe('hum');
     expect(EXAM_HALL.floor).toBe(1);
   });
 });

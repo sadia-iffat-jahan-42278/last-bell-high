@@ -10,6 +10,7 @@ import {
   COLOR_PRICES,
   COURSES,
   CURRICULUM,
+  DEPARTMENTS,
   ITEMS,
   NPCS,
   PERKS,
@@ -138,6 +139,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
           <div class="statrow"><span class="nm">😵 Stress</span>${meter(s.stress, 100, '#ff6b6b')}<b>${Math.round(s.stress)}</b></div>
           <div class="statrow"><span class="nm">😇 Rep</span>${meter(s.rep, 100, '#ffb300')}<b>${Math.round(s.rep)}</b></div>
           <div class="statrow"><span class="nm">🪙 Coins</span><span class="strong grow">${s.coins}</span></div>
+          <div class="statrow"><span class="nm">${DEPARTMENTS[s.major].icon} Dept</span><span class="strong grow">${DEPARTMENTS[s.major].school}</span></div>
           <div class="statrow"><span class="nm">🎓 Year</span><span class="strong grow">${YEAR_NAMES[St.yearOf(s) - 1]} · semester ${St.term(s) + 1} of ${TERMS}</span></div>
           <div class="statrow"><span class="nm">🏆 Rank</span><span class="strong grow">${rk ? `#${rk.rank} of ${rk.total} (${Math.round(rk.score)}% · GPA ${St.gpaOf(rk.score).toFixed(2)})` : 'No grades yet'}</span></div></div>
           <div class="box"><h4>Stats</h4>${STAT_INFO.map(
@@ -163,7 +165,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
           today.some((x, i) => x === id || (x === 'TEST' && St.testCourse(s) === id && i >= 0))
             ? ' · 📍 today'
             : '';
-        const rows = CURRICULUM[t]
+        const rows = CURRICULUM[s.major][t]
           .map((id) => {
             const c = COURSES[id];
             const sc = St.courseScore(s, t, id);
@@ -175,7 +177,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
           const rep = s.termReports.find((r) => r.term === i);
           return `<span class="badge">Sem ${i + 1} · ${rep ? `${Math.round(rep.score)}% · GPA ${St.gpaOf(rep.score).toFixed(2)} · #${rep.rank ?? '—'}` : '—'}</span>`;
         }).join('');
-        b.innerHTML = `<div class="box"><h4>Semester ${t + 1} of ${TERMS} · ${YEAR_NAMES[St.yearOf(s) - 1]} year · ${CURRICULUM[t].length} courses</h4>${rows}</div>
+        b.innerHTML = `<div class="box"><h4>Semester ${t + 1} of ${TERMS} · ${YEAR_NAMES[St.yearOf(s) - 1]} year · ${DEPARTMENTS[s.major].short} · ${CURRICULUM[s.major][t].length} courses</h4>${rows}</div>
           <div class="box spaced"><h4>Transcript</h4>${history || '<span class="muted">Your first semester is still in progress.</span>'}</div>`;
       },
 
@@ -184,7 +186,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
           const S = SUBJECTS[id];
           const m = s.mastery[id];
           const termGrades = Array.from({ length: TERMS }, (_, t) => {
-            const scores = CURRICULUM[t]
+            const scores = CURRICULUM[s.major][t]
               .filter((c) => COURSES[c].area === id)
               .map((c) => St.courseScore(s, t, c))
               .filter((v): v is number => v !== null);
@@ -219,7 +221,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
           const next = N.beats[f.story];
           // the biography is part of getting to know someone, so it unlocks with the personality
           const bio = St.knowsPersonality(s, id) ? `<br>${N.bio}` : '';
-          return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio"><b>${N.major}</b> · ${relationText(s, id)}${bio}</div>${scores(id)}${personality(id)}
+          return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio"><b>${DEPARTMENTS[N.major].school}</b> · ${relationText(s, id)}${bio}</div>${scores(id)}${personality(id)}
               <div class="story">Story: ${f.story}/3 ${next ? `· next at relationship ${next.at}` : '· complete'}</div>${N.perks
                 .map(
                   (p) =>
@@ -248,7 +250,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
             )
             .join('')}</div>`;
         b.innerHTML =
-          `<div class="hint">${PERSON_IDS.length} people make up Last Bell University, including the 16 friends on their own page. Every conversation raises Interaction; how you answer moves the Relationship up or down. A personality appears at ${PERSONALITY_AT} interaction points.</div>` +
+          `<div class="hint">${PERSON_IDS.length} people make up Engineers of the Elite, including the 16 friends on their own page. Every conversation raises Interaction; how you answer moves the Relationship up or down. A personality appears at ${PERSONALITY_AT} interaction points.</div>` +
           group('🎓 Professors', PROFESSORS) +
           group('🧑‍🎓 Classmates', STUDENTS) +
           group('🧰 Staff', STAFF);

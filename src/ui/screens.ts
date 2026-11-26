@@ -1,7 +1,16 @@
 // Full-screen flows: title menu, help, settings and the character creator.
 import { Sound } from '../audio/sound';
+import { DEPARTMENTS } from '../core/courses';
 import { GENDERS, defaultName } from '../core/state';
-import type { Accessory, Gender, Look, Meta, Unlocks } from '../core/types';
+import {
+  MAJOR_IDS,
+  type Accessory,
+  type Gender,
+  type Look,
+  type MajorId,
+  type Meta,
+  type Unlocks,
+} from '../core/types';
 import { hexCss } from '../core/util';
 import { ACCESSORIES, BAGS, BLAZERS, HAIR_COLORS, HAIR_STYLES, SKINS } from '../render/characters';
 import { $, el, esc } from './dom';
@@ -15,7 +24,7 @@ export function titleScreen(opts: { hasSave: boolean; saveInfo: string }): Promi
   const t = el(
     'div',
     'title-screen',
-    `<div class="logo">LAST BELL<br><span style="font-size:0.62em;letter-spacing:4px">UNIVERSITY</span></div><div class="tagline">4 years. 8 semesters. 71 courses. One unforgettable degree.</div><div class="titlebtns"></div>`,
+    `<div class="logo">ENGINEERS<br><span style="font-size:0.62em;letter-spacing:4px">OF THE ELITE</span></div><div class="tagline">Five departments. Eight semesters. One engineering degree.</div><div class="titlebtns"></div>`,
   );
   host.appendChild(t);
   const row = $('.titlebtns', t);
@@ -41,13 +50,13 @@ export function helpScreen(): Promise<void> {
     'How to Play',
     `<b>Goal:</b> survive four years (8 semesters), ace your courses, make friends in every year and graduate with the best rank you can.<br><br>
     🕘 <b>Every day has 6 periods</b>: three lectures, lunch, after class and evening. Check the 📌 notice board for today’s rooms.<br>
-    🏫 <b>Five department buildings, five storeys each.</b> Every course has its own numbered room (first-year courses low down, final-year courses on the top floors). Check the 📌 notice board or the lobby directory, walk into the right building and <b>climb the stairs</b> at the end of the corridor. Find the room number on the door, press <b>E</b>, take the glowing seat (<b>E</b>) and the lesson starts. Chat with the professor first for a study tip.<br>
+    🏫 <b>Six department halls, five storeys each:</b> CSE, EEE, Math, Physics, Chemistry and Humanities. You belong to one of five departments, which sets your courses; each course is taught in its own department’s hall, so you will visit several. Check the 📌 notice board or a lobby directory, walk in and <b>climb the stairs</b> at the end of the corridor. Find the room number on the door, press <b>E</b>, take the glowing seat (<b>E</b>) and the lesson starts. Chat with the professor first for a study tip.<br>
     🔔 <b>Lectures</b> and <b>midterms</b> are quick quizzes. Keep a streak for a combo bonus! <b>Finals Day</b> ends each semester with a boss fight.<br>
     🎓 <b>Meet every year.</b> Upperclassmen give advice, younger students look up to you, and your year changes as you progress.<br>
     🍜 <b>The canteen is a real room.</b> Walk in, order at the hot-food counter, carry your tray to a table and sit down to eat (lunch uses the period). Friends eat there too, so sit near them! The store and vending machines are open all day.<br>
     🎭 <b>The Club House</b> holds five clubs: chess, music, dance, debate and sports, each in its own themed room. Joining is <b>mandatory</b>: every semester you register for <b>one or two</b> clubs (never more) and must attend. Sessions are mini-games that raise your stats and earn coins.<br>
     ⚡ <b>Energy & stress</b> matter: tired students answer slower. Eat, relax on the rooftop and sleep.<br>
-    💬 <b>Talk to anyone.</b> All 71 people, students, professors and staff, have their own personality. Every conversation raises your <b>Interaction</b> points (which only go up). How you answer moves your <b>Relationship</b> up or down. At 30 interaction points you learn their personality, so you know what they like. Friends also unlock story scenes and permanent bonuses; gifts help!<br>
+    💬 <b>Talk to anyone.</b> All 87 people, students, professors and staff, have their own personality. Every conversation raises your <b>Interaction</b> points (which only go up). How you answer moves your <b>Relationship</b> up or down. At 30 interaction points you learn their personality, so you know what they like. Friends also unlock story scenes and permanent bonuses; gifts help!<br>
     ⭐ Explore! Gold stars and cats are hidden around campus.<br><br>
     <b>Controls:</b> WASD/arrows move · Shift run · E interact · drag or Q/Z rotate camera · scroll zoom · J journal · M mute. On touch: joystick + button.`,
     'Got It!',
@@ -108,6 +117,7 @@ export interface CreatorConfig {
   unlocks: Unlocks;
   name: string;
   gender: Gender;
+  major: MajorId;
   onChange(look: Look): void;
 }
 
@@ -117,8 +127,10 @@ export function creatorScreen({
   onChange,
   name,
   gender: firstGender,
-}: CreatorConfig): Promise<{ name: string; look: Look; gender: Gender }> {
+  major: firstMajor,
+}: CreatorConfig): Promise<{ name: string; look: Look; gender: Gender; major: MajorId }> {
   let gender = firstGender;
+  let major = firstMajor;
   const host = $('#screens');
   host.innerHTML = '';
   const wrap = el('div', 'title-screen creator');
@@ -128,6 +140,7 @@ export function creatorScreen({
   card.innerHTML = `<h2>Create your student</h2><div class="sub">Pick a look. You can change it later in the Journal wardrobe.</div>
     <div class="field">Gender</div><div id="c-gender"></div>
     <div class="field">Name</div><input class="txt" id="c-name" maxlength="14" value="${esc(name || defaultName(gender))}" aria-label="Name">
+    <div class="field">Department</div><div id="c-major"></div><div class="sub" id="c-school"></div>
     <div class="field">Skin</div><div id="c-skin"></div><div class="field">Hair style</div><div id="c-hs"></div><div class="field">Hair colour</div><div id="c-hc"></div>
     <div class="field">Blazer</div><div id="c-bl"></div><div class="field">Backpack</div><div id="c-bg"></div><div class="field">Accessory</div><div id="c-ac"></div>
     <div class="btnrow crfoot"><button class="btn small" id="c-rand">🎲 Random</button><button class="btn primary" id="c-go">Start Year ▶</button></div>`;
@@ -192,6 +205,23 @@ export function creatorScreen({
       h.appendChild(c);
     }
   };
+  // The department decides which courses you take for all eight semesters.
+  const majorChips = () => {
+    const h = $('#c-major', card);
+    h.innerHTML = '';
+    for (const id of MAJOR_IDS) {
+      const D = DEPARTMENTS[id];
+      const c = el('span', 'chipbtn clickable' + (major === id ? ' on' : ''), `${D.icon} ${D.short}`);
+      c.dataset.major = id;
+      c.onclick = () => {
+        major = id;
+        Sound.sfx('click');
+        majorChips();
+      };
+      h.appendChild(c);
+    }
+    $('#c-school', card).textContent = `Department of ${DEPARTMENTS[major].school}`;
+  };
   const capital = (s: string) => s[0].toUpperCase() + s.slice(1);
   const render = () => {
     swatches('#c-skin', SKINS, 'skin');
@@ -211,6 +241,7 @@ export function creatorScreen({
   };
   render();
   genderChips();
+  majorChips();
   onChange(look);
   const nameInput = $<HTMLInputElement>('#c-name', card);
   // Clicking the untouched default selects it, so typing replaces it.
@@ -234,7 +265,7 @@ export function creatorScreen({
     $('#c-go', card).onclick = () => {
       const n = nameInput.value.trim() || defaultName(gender);
       Sound.sfx('ok');
-      resolve({ name: n, look, gender });
+      resolve({ name: n, look, gender, major });
     };
     wireSfx(card);
   });

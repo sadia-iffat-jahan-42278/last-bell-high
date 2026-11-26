@@ -28,6 +28,8 @@ import {
   WEEKDAYS,
   YEAR_NAMES,
   courseInRoom,
+  roomCode,
+  SLOTS_PER_FLOOR,
   gradeOf,
   xpForLevel,
   type Course,
@@ -50,6 +52,7 @@ import {
   DEPT_IDS,
   NPC_IDS,
   type ClassBuilding,
+  type MajorId,
   type ClubId,
   type CourseId,
   type Fx,
@@ -95,6 +98,8 @@ export interface RoomSpec {
   sub: string;
   /** Name of the professor standing at the front. */
   prof: string;
+  /** The departments whose students take this class; everyone when absent (finals). */
+  majors?: MajorId[];
   seed: number;
 }
 
@@ -240,6 +245,7 @@ export function classroomSpec(s: GameState): RoomSpec | null {
     title: `${ROOM_KIND_NAME[c.kind]} ${c.room}`,
     sub: `${courseLabel(c)} · ${c.code}`,
     prof: c.prof,
+    majors: c.majors,
     seed: s.day * 131 + s.period * 17 + c.id.length,
   };
 }
@@ -249,11 +255,11 @@ export function objective(s: GameState): string {
   const spec = classroomSpec(s);
   switch (k) {
     case 'class':
-      return `📘 ${COURSES[St.classCourse(s) as CourseId].name}: ${spec?.room} (${BUILDING_NAME[spec?.building ?? 'main']}, ${floorWord(spec?.floor ?? 1)})`;
+      return `📘 ${COURSES[St.classCourse(s) as CourseId].name}: ${spec?.room} (${BUILDING_NAME[spec?.building ?? 'hum']}, ${floorWord(spec?.floor ?? 1)})`;
     case 'test':
-      return `📝 Midterm: ${COURSES[St.classCourse(s) as CourseId].name} (${spec?.room}, ${BUILDING_NAME[spec?.building ?? 'main']}, ${floorWord(spec?.floor ?? 1)})`;
+      return `📝 Midterm: ${COURSES[St.classCourse(s) as CourseId].name} (${spec?.room}, ${BUILDING_NAME[spec?.building ?? 'hum']}, ${floorWord(spec?.floor ?? 1)})`;
     case 'final':
-      return '⚔️ Finals! Report to the Grand Exam Hall (Hale Hall, ground floor)';
+      return `⚔️ Finals! Report to the Grand Exam Hall (${DEPARTMENTS.hum.hall}, ground floor)`;
     case 'lunch':
       return '🍱 Lunch: eat at the Canteen, or relax';
     case 'after':
@@ -271,7 +277,7 @@ export function objective(s: GameState): string {
 export function objectiveTarget(s: GameState): ZoneId | null {
   const k = St.periodKind(s);
   if (k === 'class' || k === 'test') return COURSES[St.classCourse(s) as CourseId].building;
-  if (k === 'final') return 'main';
+  if (k === 'final') return 'hum';
   if (k === 'lunch') return 'canteen';
   if (k === 'showcase') return 'club';
   if (k === 'evening') return 'gate';
@@ -320,7 +326,8 @@ function studyCourses(
   const pool: CourseId[] = [];
   const levels: Record<CourseId, number> = {};
   for (const c of Object.values(COURSES)) {
-    if (c.area !== area || c.sem > St.term(s)) continue;
+    // only courses on the player's own curriculum, up to this semester
+    if (c.area !== area || c.sem > St.term(s) || !c.majors.includes(s.major)) continue;
     if (now.has(c.id)) {
       levels[c.id] = courseLevel(s, c, bonus);
       pool.push(c.id, c.id, c.id);
@@ -619,7 +626,9 @@ let lastRoom: RoomSpec | null = null;
 
 /** Between lectures, one of the professors who teaches on this floor can be found in the corridor. */
 function corridorProfessor(s: GameState, building: ClassBuilding, floor: number): string | undefined {
-  const here = Object.values(COURSES).filter((c) => c.building === building && c.floor === floor);
+  const here = Object.values(COURSES).filter(
+    (c) => c.building === building && c.floor === floor && c.sem === St.term(s),
+  );
   const now = new Set(St.courses(s));
   const pool = here.filter((c) => now.has(c.id));
   const list = pool.length ? pool : here;
@@ -723,17 +732,17 @@ export async function showDirectory(building: ClassBuilding): Promise<void> {
   for (let f = FLOORS; f >= 1; f--) {
     const rooms: string[] = [];
     for (let slot = 0; slot < 6; slot++) {
-      const c = courseInRoom(building, f, slot);
-      if (c) rooms.push(`${c.room} ${SUBJECTS[c.area].icon} ${c.name}`);
+      const c = courseInRoom(building, f, slot, s.major, St.term(s));
+      if (c) rooms.push(`${c.room} ${c.majors.includes(s.major) ? '⭐ ' : ''}${c.name}`);
       else if (building === EXAM_HALL.building && f === EXAM_HALL.floor && slot === EXAM_HALL.slot)
         rooms.push(`${EXAM_HALL.room} 🏛️ ${EXAM_HALL.name}`);
     }
     const mark = spec && spec.building === building && spec.floor === f ? ' ◀ your lecture' : '';
-    rows.push(`<b>${floorWord(f)}</b>${mark}<br>${rooms.join('<br>') || '<i>Staff rooms</i>'}`);
+    rows.push(`<b>${floorWord(f)}</b>${mark}<br>${rooms.join('<br>') || '<i>No classes this semester</i>'}`);
   }
   await ui.info(
     `${D.icon} ${D.hall} directory`,
-    `<b>${D.school}</b> · first-year courses are on the low floors, final-year courses at the top.<br><br>${rows.join('<br><br>')}`,
+    `<b>${D.school}</b> · classes this semester (⭐ is on your curriculum). First-year rooms are low down, final-year rooms at the top.<br><br>${rows.join('<br><br>')}`,
     'Thanks',
   );
 }
@@ -747,19 +756,28 @@ export function floorInteractions(
   const spec = classroomSpec(s);
   const doors: Interaction[] = [];
   for (let slot = 0; slot < 6; slot++) {
-    const c = courseInRoom(building, floor, slot);
+    const c = courseInRoom(building, floor, slot, s.major, St.term(s));
     const exam = building === EXAM_HALL.building && floor === EXAM_HALL.floor && slot === EXAM_HALL.slot;
+    const staff = slot === SLOTS_PER_FLOOR - 1;
     const mine = !!spec && spec.building === building && spec.floor === floor && spec.slot === slot;
-    const name = c ? `${c.room}: ${c.name}` : exam ? `${EXAM_HALL.room}: ${EXAM_HALL.name}` : 'Staff Room';
+    const name = c
+      ? `${c.room}: ${c.name}`
+      : exam
+        ? `${EXAM_HALL.room}: ${EXAM_HALL.name}`
+        : staff
+          ? 'Staff Room'
+          : `${roomCode(building, floor, slot)}: Free Room`;
     doors.push({
       label: mine ? `Enter ${name}` : `${name}`,
       run: enterClassroom,
       enabled: mine,
       why: spec
         ? `Your lecture is in ${spec.room}, ${BUILDING_NAME[spec.building]}, ${floorWord(spec.floor)}.`
-        : c
-          ? `${c.room} is locked: ${c.name} is not in session.`
-          : 'This door is locked.',
+        : !c
+          ? 'This door is locked.'
+          : c.majors.includes(s.major)
+            ? `${c.room} is locked: ${c.name} is not in session.`
+            : `${c.name} is not on your curriculum.`,
     });
   }
   return {
@@ -1231,7 +1249,7 @@ export async function clubRegistration(): Promise<void> {
   await ui.say([
     [
       COORDINATOR,
-      `Club registration for semester ${t + 1}! At Last Bell University, joining a club is mandatory, and each student may join at most ${CLUB_MAX} per semester.`,
+      `Club registration for semester ${t + 1}! At Engineers of the Elite, joining a club is mandatory, and each student may join at most ${CLUB_MAX} per semester.`,
     ],
     [
       COORDINATOR,
@@ -2048,7 +2066,7 @@ export async function talkTo(npc: NpcId): Promise<void> {
   const canGift = f.gift !== s.day && ((s.items.snack ?? 0) > 0 || (s.items.drink ?? 0) > 0);
   const i = await ui.choice({
     title: `${N.emoji} ${N.name}`,
-    sub: `${relationText(s, npc)}<br>${N.role} · ${N.major}<br>${scoreLine(s, npc)}${beat ? `<br>Next story at relationship ${beat.at}` : ''}`,
+    sub: `${relationText(s, npc)}<br>${N.role} · ${DEPARTMENTS[N.major].school}<br>${scoreLine(s, npc)}${beat ? `<br>Next story at relationship ${beat.at}` : ''}`,
     options: [
       {
         icon: '💬',
@@ -2444,7 +2462,7 @@ export async function endDay(): Promise<void> {
   if (decayed.length) chips.push({ text: `📉 Rusty: ${decayed.join(' ')}`, cls: 'bad' });
 
   const nextDay: GameState = { ...s, day: s.day + 1 };
-  let tease = 'Another day at Last Bell University.';
+  let tease = 'Another day at Engineers of the Elite.';
   if (!last) {
     if (St.isFinals(nextDay))
       tease = `⚔️ Tomorrow is FINALS DAY vs ${FINALS[St.term(nextDay)].name}! Rest well.`;
@@ -2637,7 +2655,7 @@ async function ending(): Promise<void> {
   ];
   const pick = await ui.results({
     title: '🎓 Graduation Day',
-    subtitle: `${esc(s.name)} · Class of Last Bell University`,
+    subtitle: `${esc(s.name)} · ${DEPARTMENTS[s.major].school} · Engineers of the Elite`,
     letter: title.split(' ')[0],
     color: '#ffb300',
     rows,
@@ -2694,11 +2712,11 @@ export async function beginDay(fresh: boolean): Promise<void> {
     await ui.say([
       [
         'Dean Hale',
-        `Welcome to Last Bell University, ${s.name}! Four years, eight semesters, and a final exam at the end of each one.`,
+        `Welcome to Engineers of the Elite, ${s.name}! You have joined the Department of ${DEPARTMENTS[s.major].school}: four years, eight semesters, and a final exam at the end of each one.`,
       ],
       [
         'Dean Hale',
-        'Each course has its own classroom in its department’s building: Newton, Lovelace, Curie, Smith or Hale. Walk in, climb the stairs to the right floor, find the room number on the door and take your seat.',
+        'Every course is taught in its own department’s hall: CSE, EEE, Math, Physics, Chemistry or Humanities, and you will visit several. Walk in, climb the stairs to the right floor, find the room number on the door and take your seat.',
       ],
       [
         'Dean Hale',
@@ -2763,7 +2781,7 @@ export function buildingInteractions(): Record<ZoneId, Interaction> {
       () => enterBuilding(b),
       k !== 'evening' && (!inClass || mine),
       inClass
-        ? `Your lecture is in ${BUILDING_NAME[spec?.building ?? 'main']}, not here.`
+        ? `Your lecture is in ${BUILDING_NAME[spec?.building ?? 'hum']}, not here.`
         : 'The building is closed for the evening.',
     );
   }

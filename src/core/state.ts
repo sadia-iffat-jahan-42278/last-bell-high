@@ -32,6 +32,7 @@ import type {
   CourseId,
   Daily,
   Gender,
+  MajorId,
   GameState,
   Look,
   Meta,
@@ -55,14 +56,14 @@ import {
   type Mood,
   type ReplyTone,
 } from './people';
-import { CLUB_IDS, NPC_IDS } from './types';
+import { CLUB_IDS, MAJOR_IDS } from './types';
 import { clamp, hashStr, mulberry32, type Rng } from './util';
 
-export const SAVE_KEY = 'lastbell.save.v2';
+export const SAVE_KEY = 'lastbell.save.v3';
 export const META_KEY = 'lastbell.meta.v1';
 export const TOTAL_DAYS = TERMS * DAYS_PER_TERM;
 /** The student's name when neither the player nor their gender chooses one. */
-export const DEFAULT_NAME = 'Alex';
+export const DEFAULT_NAME = 'Sophie';
 
 export function defaultLook(): Look {
   return {
@@ -99,9 +100,8 @@ export const freshDaily = (): Daily => ({
 
 /** The genders you can pick, with the name a new student gets if they do not type one. */
 export const GENDERS: { id: Gender; name: string; defaultName: string }[] = [
-  { id: 'female', name: 'Female', defaultName: 'Sophie' },
+  { id: 'female', name: 'Female', defaultName: DEFAULT_NAME },
   { id: 'male', name: 'Male', defaultName: 'Daniel' },
-  { id: 'nonbinary', name: 'Non-binary', defaultName: DEFAULT_NAME },
 ];
 export const defaultName = (gender: Gender): string =>
   GENDERS.find((g) => g.id === gender)?.defaultName ?? DEFAULT_NAME;
@@ -110,13 +110,15 @@ export function newState(
   name: string,
   look: Look,
   meta: Meta = defaultMeta(),
-  gender: Gender = 'nonbinary',
+  gender: Gender = 'female',
+  major: MajorId = 'cse',
 ): GameState {
   const npcIds = Object.keys(NPCS) as NpcId[];
   const s: GameState = {
-    v: 2,
+    v: 3,
     name: name || defaultName(gender),
     gender,
+    major,
     look: { ...look },
     day: 0,
     period: 0,
@@ -199,13 +201,14 @@ export const isFinals = (s: GameState): boolean => dayInTerm(s) === DAYS_PER_TER
 export const isTestDay = (s: GameState): boolean => dayInTerm(s) === 2;
 export const isShowcase = (s: GameState): boolean => dayInTerm(s) === 4;
 /** The courses the player is enrolled in this semester. */
-export const courses = (s: GameState): CourseId[] => CURRICULUM[term(s)];
+export const courses = (s: GameState): CourseId[] => CURRICULUM[s.major][term(s)];
 /** Today's lecture slots indexed by period (null where there is no lecture). */
-export const timetable = (s: GameState): TimetableEntry[] => semesterTimetable(term(s))[dayInTerm(s)];
-export const testCourse = (s: GameState): CourseId => midtermCourse(term(s));
+export const timetable = (s: GameState): TimetableEntry[] =>
+  semesterTimetable(s.major, term(s))[dayInTerm(s)];
+export const testCourse = (s: GameState): CourseId => midtermCourse(s.major, term(s));
 export const testSubject = (s: GameState): SubjectId => COURSES[testCourse(s)].area;
 /** Subject areas the finals boss tests this semester. */
-export const finalsPhases = (s: GameState): SubjectId[] => finalPhases(term(s));
+export const finalsPhases = (s: GameState): SubjectId[] => finalPhases(s.major, term(s));
 
 export function periodKind(s: GameState): PeriodKind {
   const p = s.period;
@@ -449,11 +452,11 @@ export function courseScore(s: GameState, t: number, course: CourseId): number |
 }
 /** Average of the player's course scores in semester `t` (a GPA-style percentage). */
 export function playerScore(s: GameState, t: number): number | null {
-  const vals = CURRICULUM[t].map((x) => courseScore(s, t, x)).filter((v): v is number => v !== null);
+  const vals = CURRICULUM[s.major][t].map((x) => courseScore(s, t, x)).filter((v): v is number => v !== null);
   return vals.length ? avg(vals) : null;
 }
 
-/** The rest of your cohort: the same twenty-four classmates you meet around campus. */
+/** The rest of your cohort: the same forty classmates you meet around campus. */
 const NAMES = STUDENTS.map((p) => p.name);
 export interface Classmate {
   name: string;
@@ -464,10 +467,10 @@ export function classmates(): Classmate[] {
   if (classmateCache) return classmateCache;
   const r = mulberry32(99);
   classmateCache = NAMES.map((name) => ({ name, ability: 50 + r() * 30 }));
-  // The last four are the cohort's high flyers.
-  const list = classmateCache;
-  [87, 79, 62, 69].forEach((a, i) => (list[list.length - 4 + i].ability = a));
-  return list;
+  // A few are the cohort's high flyers.
+  const stars: Record<string, number> = { Zara: 87, Chen: 79, Ines: 76, Pia: 72 };
+  for (const c of classmateCache) c.ability = stars[c.name] ?? c.ability;
+  return classmateCache;
 }
 export function npcTerm(n: Classmate, t: number): number {
   const r = mulberry32(hashStr(n.name) + t * 97);
@@ -594,10 +597,11 @@ const NESTED_KEYS = ['stats', 'mastery', 'clubs', 'friends', 'totals', 'unlocks'
 
 /**
  * Validate a parsed save and fill in any fields added since it was written.
- * Returns null when the data is not a usable v2 save (old v1 high-school saves cannot be converted).
+ * Returns null when the data is not a usable v3 save: earlier saves followed a different set of courses and cannot
+ * be converted.
  */
 export function migrateSave(raw: unknown): GameState | null {
-  if (!isRecord(raw) || raw.v !== 2) return null;
+  if (!isRecord(raw) || raw.v !== 3) return null;
   if (typeof raw.day !== 'number' || !isRecord(raw.look) || !isRecord(raw.friends)) return null;
   const base = newState(
     typeof raw.name === 'string' ? raw.name : DEFAULT_NAME,
@@ -608,7 +612,7 @@ export function migrateSave(raw: unknown): GameState | null {
     if (isRecord(raw[k])) out[k] = { ...(base[k] as Json), ...(raw[k] as Json) };
   }
   const s = out as unknown as GameState;
-  // Saves from before the Club House: drop the old Science Club entries and fill in the new fields.
+  // Drop anything that does not belong to one of the clubs, and keep the per-semester lists the right length.
   const valid = (id: unknown): id is ClubId => (CLUB_IDS as readonly unknown[]).includes(id);
   for (const k of Object.keys(s.clubs)) if (!valid(k)) delete (s.clubs as Record<string, unknown>)[k];
   s.showcase = (Array.isArray(s.showcase) ? s.showcase : []).filter((x) => valid(x?.club));
@@ -619,13 +623,9 @@ export function migrateSave(raw: unknown): GameState | null {
   if (!Array.isArray(s.sessions) || s.sessions.length !== TERMS)
     s.sessions = Array.from({ length: TERMS }, (_, t) => (isRecord(s.sessions?.[t]) ? s.sessions[t] : {}));
   if (!isRecord(s.seenQ)) s.seenQ = {};
-  // Saves from before the two-score system: friendship becomes the relationship, and counts as interaction too.
-  for (const id of NPC_IDS) {
-    const f = s.friends[id];
-    if (typeof f.interaction !== 'number') f.interaction = Math.max(0, Math.round(f.rel));
-  }
   if (!isRecord(s.people)) s.people = {};
-  if (!GENDERS.some((g) => g.id === s.gender)) s.gender = 'nonbinary';
+  if (!GENDERS.some((g) => g.id === s.gender)) s.gender = 'female';
+  if (!MAJOR_IDS.includes(s.major)) s.major = 'cse';
   return s;
 }
 

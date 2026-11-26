@@ -6,11 +6,11 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
   maya: {
     name: 'Maya',
     year: 1,
-    major: 'Psychology',
+    major: 'math',
     role: 'Study Buddy',
     emoji: '📚',
     color: '#b28cff',
-    bio: 'Freshman psychology major. Color-codes everything. Quietly brilliant, loudly nervous.',
+    bio: 'Freshman mathematics major. Color-codes everything. Quietly brilliant, loudly nervous.',
     perks: [
       { need: 2, text: 'Study Buddy: the first question of every quiz is auto-hinted.' },
       { need: 3, text: 'Study Group: +15% XP from library & late-night study.' },
@@ -111,7 +111,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
   kai: {
     name: 'Kai',
     year: 2,
-    major: 'Sports Science',
+    major: 'eee',
     role: 'Sports Captain',
     emoji: '🏀',
     color: '#ff7a59',
@@ -211,7 +211,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
   zoe: {
     name: 'Zoe',
     year: 3,
-    major: 'Music Performance',
+    major: 'phy',
     role: 'Music Prodigy',
     emoji: '🎧',
     color: '#35d9a0',
@@ -315,7 +315,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
   rin: {
     name: 'Rin',
     year: 4,
-    major: 'Mathematics',
+    major: 'math',
     role: 'Rival',
     emoji: '🏆',
     color: '#f0b429',

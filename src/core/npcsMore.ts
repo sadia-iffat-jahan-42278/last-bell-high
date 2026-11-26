@@ -6,7 +6,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   theo: {
     name: 'Theo',
     year: 1,
-    major: 'Computer Science',
+    major: 'cse',
     role: 'Dorm Neighbour',
     emoji: '🎮',
     color: '#4aa8ff',
@@ -107,7 +107,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   lina: {
     name: 'Lina',
     year: 1,
-    major: 'Journalism & Art',
+    major: 'cse',
     role: 'Campus Reporter',
     emoji: '📰',
     color: '#ff6bd6',
@@ -199,7 +199,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   sam: {
     name: 'Sam',
     year: 1,
-    major: 'Business',
+    major: 'chem',
     role: 'Café Barista',
     emoji: '☕',
     color: '#c8803a',
@@ -291,7 +291,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   diego: {
     name: 'Diego',
     year: 2,
-    major: 'Marketing',
+    major: 'eee',
     role: 'Campus Hustler',
     emoji: '🛹',
     color: '#e0762a',
@@ -363,7 +363,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
       {
         at: 70,
         title: 'Pitch Night',
-        scene: [['Diego', 'Business class pitch night. I need a co-pitcher. Wear something confident.']],
+        scene: [['Diego', 'Startup pitch night. I need a co-pitcher. Wear something confident.']],
         prompt: 'Diego adjusts a very bold tie.',
         options: [
           {
@@ -383,7 +383,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   iris: {
     name: 'Iris',
     year: 2,
-    major: 'Physics',
+    major: 'phy',
     role: 'Teaching Assistant',
     emoji: '🔭',
     color: '#7a4fb5',
@@ -476,7 +476,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   yuki: {
     name: 'Yuki',
     year: 2,
-    major: 'Robotics',
+    major: 'eee',
     role: 'Lab Nerd',
     emoji: '🤖',
     color: '#2ec4b6',
@@ -570,7 +570,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   marcus: {
     name: 'Marcus',
     year: 3,
-    major: 'Political Science',
+    major: 'cse',
     role: 'Student Council President',
     emoji: '🎙️',
     color: '#c23b3b',
@@ -662,7 +662,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   ava: {
     name: 'Ava',
     year: 3,
-    major: 'Law & Debate',
+    major: 'math',
     role: 'Debate Captain',
     emoji: '⚖️',
     color: '#e58ab5',
@@ -752,7 +752,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   felix: {
     name: 'Felix',
     year: 3,
-    major: 'Computer Engineering',
+    major: 'cse',
     role: 'Hackathon Organiser',
     emoji: '💡',
     color: '#35d9a0',
@@ -848,7 +848,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   nora: {
     name: 'Nora',
     year: 4,
-    major: 'Biology',
+    major: 'chem',
     role: 'Grad-School Mentor',
     emoji: '🎓',
     color: '#3d7be0',
@@ -940,7 +940,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   jack: {
     name: 'Jack',
     year: 4,
-    major: 'Entrepreneurship',
+    major: 'eee',
     role: 'Startup Founder',
     emoji: '🚀',
     color: '#ff7a59',
@@ -1028,7 +1028,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
   tessa: {
     name: 'Tessa',
     year: 4,
-    major: 'Education',
+    major: 'phy',
     role: 'Resident Advisor',
     emoji: '🏠',
     color: '#f0b429',

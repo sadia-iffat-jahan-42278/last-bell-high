@@ -19,6 +19,8 @@ import {
   SUBJECTS,
   YEAR_NAMES,
   courseInRoom,
+  roomCode,
+  SLOTS_PER_FLOOR,
 } from './core/data';
 import * as St from './core/state';
 import {
@@ -197,11 +199,12 @@ const PERIOD_HOURS = [...PERIODS.map((p) => p.hour), 21.5];
 /** Fixed bright "classroom lighting" used indoors regardless of the hour or weather. */
 const INDOOR_HOUR = 13;
 const RING_ZONES: ZoneId[] = [
-  'main',
+  'hum',
   'math',
-  'cs',
-  'lab',
-  'econ',
+  'cse',
+  'eee',
+  'phy',
+  'chem',
   'library',
   'canteen',
   'club',
@@ -613,11 +616,14 @@ export class Scene3D implements SceneHooks {
       rng,
     );
     const standing = headCount('latecomers', 'busy', rng);
-    const most = Math.min(CLASSMATES - standing, Math.round(free.length * 0.9));
+    const students = pickStudents(rng, this.classmates.length, spec.majors);
+    const most = Math.max(
+      0,
+      Math.min(students.length - standing, CLASSMATES - standing, Math.round(free.length * 0.9)),
+    );
     const seated = randInt(rng, Math.min(most, Math.round(free.length * 0.35)), most);
-    const students = pickStudents(rng, this.classmates.length);
     this.classmates.forEach((c, i) => {
-      if (i >= seated + standing) {
+      if (i >= Math.min(seated + standing, students.length)) {
         c.root.visible = false;
         return;
       }
@@ -1462,7 +1468,8 @@ export class Scene3D implements SceneHooks {
     const s = game.s;
     const rel = s ? St.relationTo(s, id) : 'peer';
     const tag = rel === 'senior' ? '🎓 Above You' : rel === 'junior' ? '🌱 Below You' : '🤝 Your Year';
-    hud.setPrompt({ text: `Talk to ${N.name} (${YEAR_NAMES[N.year - 1]}, ${tag})`, enabled: true });
+    const who = `${DEPARTMENTS[N.major].short} ${YEAR_NAMES[N.year - 1]}`;
+    hud.setPrompt({ text: `Talk to ${N.name} (${who}, ${tag})`, enabled: true });
   }
 
   /** Pick the nearest interactable (relative to its radius) and show its prompt. */
@@ -1480,7 +1487,7 @@ export class Scene3D implements SceneHooks {
     };
     for (const id of Object.keys(interactions) as ZoneId[]) {
       const z = ZONES[id];
-      consider({ kind: 'building', id, info: interactions[id] }, z.x, z.z, id === 'main' ? 3.6 : 2.9);
+      consider({ kind: 'building', id, info: interactions[id] }, z.x, z.z, id === 'hum' ? 3.6 : 2.9);
     }
     for (const n of Object.values(this.npcs))
       if (n.c.root.visible) consider({ kind: 'npc', id: n.id }, n.x, n.z, 2.4);
@@ -1652,18 +1659,22 @@ export class Scene3D implements SceneHooks {
       const spec = room.spec as FloorSpec;
       const D = DEPARTMENTS[spec.building];
       const now = game.s ? classroomSpec(game.s) : null;
+      const major = game.s?.major ?? 'cse';
+      const sem = game.s ? St.term(game.s) : 0;
       fx.doors.forEach((d, i) => {
-        const c = courseInRoom(spec.building, spec.floor, i);
+        const c = courseInRoom(spec.building, spec.floor, i, major, sem);
         const exam =
           spec.building === EXAM_HALL.building && spec.floor === EXAM_HALL.floor && i === EXAM_HALL.slot;
         const mine = !!now && now.building === spec.building && now.floor === spec.floor && now.slot === i;
         defs.push({
           id: 'room_fd_' + i,
           text: c
-            ? `${c.room} ${SUBJECTS[c.area].icon} ${c.name}`
+            ? `${c.room} ${c.majors.includes(major) ? SUBJECTS[c.area].icon : '▫️'} ${c.name}`
             : exam
               ? `${EXAM_HALL.room} 🏛️ ${EXAM_HALL.name}`
-              : '🔒 Staff room',
+              : i === SLOTS_PER_FLOOR - 1
+                ? '🔒 Staff room'
+                : `${roomCode(spec.building, spec.floor, i)} · free`,
           x: d.x,
           y: 3.9,
           z: d.z + (i < 3 ? -1.9 : 1.9),

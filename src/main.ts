@@ -187,6 +187,7 @@ async function newGameFlow(): Promise<void> {
     look,
     name: St.defaultName('female'),
     gender: 'female',
+    major: 'cse',
     unlocks: {
       hair: [0, 1, 2, 3],
       blazer: [0, 1, 2, 3],
@@ -196,7 +197,7 @@ async function newGameFlow(): Promise<void> {
     onChange: (l) => scene.playerChar.setLook(l),
   });
   await exclusive(async () => {
-    const s = St.newState(res.name, res.look, meta, res.gender);
+    const s = St.newState(res.name, res.look, meta, res.gender, res.major);
     game.s = s;
     ui.portraits[s.name] = { emoji: '🙂', color: '#4aa8ff' };
     ui.clearScreens();

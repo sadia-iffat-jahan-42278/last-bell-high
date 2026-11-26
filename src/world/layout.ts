@@ -1,5 +1,5 @@
 // Campus layout: pure data shared by the 3D scene, collisions, minimap and game rules.
-import type { ZoneId } from '../core/types';
+import type { ClassBuilding, ZoneId } from '../core/types';
 
 export interface Point {
   x: number;
@@ -12,7 +12,7 @@ export interface Door extends Point {
   w: number;
   h: number;
 }
-export type BuildingId = 'main' | 'math' | 'cs' | 'lab' | 'econ' | 'library' | 'canteen' | 'club';
+export type BuildingId = ClassBuilding | 'library' | 'canteen' | 'club';
 export interface Building {
   id: BuildingId;
   name: string;
@@ -35,9 +35,9 @@ export const BOUNDS = { x0: -49, x1: 49, z0: -45.5, z1: 49 };
 export const PLAZA = { x: 0, z: 6, r: 14 };
 export const BUILDINGS: Building[] = [
   {
-    // Hale Hall: Humanities, and the Grand Exam Hall on the ground floor.
-    id: 'main',
-    name: 'Hale Hall',
+    // Humanities Hall, with the Grand Exam Hall on the ground floor.
+    id: 'hum',
+    name: 'Humanities Hall',
     icon: '🏛️',
     cx: 0,
     cz: -31,
@@ -53,7 +53,7 @@ export const BUILDINGS: Building[] = [
   },
   {
     id: 'math',
-    name: 'Newton Hall',
+    name: 'Math Hall',
     icon: '📐',
     cx: -37,
     cz: -33,
@@ -68,8 +68,8 @@ export const BUILDINGS: Building[] = [
     floors: 5,
   },
   {
-    id: 'cs',
-    name: 'Lovelace Hall',
+    id: 'cse',
+    name: 'CSE Hall',
     icon: '💻',
     cx: 37,
     cz: -33,
@@ -114,8 +114,8 @@ export const BUILDINGS: Building[] = [
     door: { x: 25, z: -8, dx: -1, dz: 0, w: 3, h: 3.6 },
   },
   {
-    id: 'lab',
-    name: 'Curie Hall',
+    id: 'chem',
+    name: 'Chemistry Hall',
     icon: '🧪',
     cx: -33,
     cz: 14,
@@ -130,9 +130,9 @@ export const BUILDINGS: Building[] = [
     floors: 5,
   },
   {
-    id: 'econ',
-    name: 'Smith Hall',
-    icon: '📈',
+    id: 'eee',
+    name: 'EEE Hall',
+    icon: '⚡',
     cx: -33,
     cz: 38,
     w: 16,
@@ -146,20 +146,36 @@ export const BUILDINGS: Building[] = [
     floors: 5,
   },
   {
+    id: 'phy',
+    name: 'Physics Hall',
+    icon: '🔭',
+    cx: 33,
+    cz: 38.5,
+    w: 16,
+    d: 14,
+    h: 21,
+    wall: 0xebe4f7,
+    trim: 0x5a3f9c,
+    roof: 0x4a357f,
+    accent: 0x7a4fb5,
+    door: { x: 25, z: 38.5, dx: -1, dz: 0, w: 3.4, h: 4.2 },
+    floors: 5,
+  },
+  {
     // One building holds all five clubs (chess, music, dance, debate and sports), one room each.
     id: 'club',
     name: 'Club House',
     icon: '🎭',
     cx: 32,
-    cz: 26,
+    cz: 15,
     w: 16,
-    d: 30,
+    d: 29,
     h: 8.5,
     wall: 0xf6e8dc,
     trim: 0xb23a6a,
     roof: 0x6b3d9c,
     accent: 0xff7a59,
-    door: { x: 24, z: 26, dx: -1, dz: 0, w: 3.6, h: 3.9 },
+    door: { x: 24, z: 15, dx: -1, dz: 0, w: 3.6, h: 3.9 },
   },
 ];
 export const ROOF_STAIRS = { x: 15, z: -22, door: { x: 15, z: -20, dx: 0, dz: 1 } };

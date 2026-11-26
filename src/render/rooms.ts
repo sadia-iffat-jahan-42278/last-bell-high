@@ -143,17 +143,18 @@ const BASE = {
 
 /** Each department's classrooms have their own colours so you can tell which building you are in. */
 const THEMES: Record<ClassBuilding, Partial<typeof BASE>> = {
-  main: { wall: 0xf3e6cf, trim: 0x8a3b3b, rug: 0x8a4a4a },
+  hum: { wall: 0xf3e6cf, trim: 0x8a3b3b, rug: 0x8a4a4a },
   math: { wall: 0xe6eefc, trim: 0x2f5fb8, rug: 0x3a5a99 },
-  cs: { wall: 0xe4eef0, trim: 0x13867f, rug: 0x2a6f6a },
-  lab: { wall: 0xe1f1ee, trim: 0x13867f, rug: 0x2a8f8a },
-  econ: { wall: 0xf6efd9, trim: 0xb8862b, rug: 0x7a5a2a },
+  cse: { wall: 0xe4eef0, trim: 0x13867f, rug: 0x2a6f6a },
+  chem: { wall: 0xe5f3e4, trim: 0x2f8a4a, rug: 0x3a8a5a },
+  eee: { wall: 0xf6efd9, trim: 0xb8862b, rug: 0x7a5a2a },
+  phy: { wall: 0xebe4f7, trim: 0x5a3f9c, rug: 0x5a4a8a },
 };
 
 export function createRooms(): Record<InteriorKind, RoomInterior> {
   const out: Record<InteriorKind, RoomInterior> = { ...buildClubhouse(), canteen: buildCanteen() };
   // one classroom interior per department and room kind that has a course in it (plus the exam hall)
-  const combos = new Set<string>(['main:lecture']);
+  const combos = new Set<string>(['hum:lecture']);
   for (const c of Object.values(COURSES)) combos.add(`${c.building}:${c.kind}`);
   [...combos].sort().forEach((combo, i) => {
     const [b, kind] = combo.split(':') as [ClassBuilding, RoomKind];

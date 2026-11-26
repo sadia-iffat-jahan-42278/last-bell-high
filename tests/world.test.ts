@@ -86,7 +86,7 @@ describe('interaction spots are reachable', () => {
   });
   it('the player can get in range of every door and object', () => {
     for (const [id, z] of Object.entries(ZONES)) {
-      expect(reachable(campus.colliders, z.x, z.z, id === 'main' ? 3.6 : 2.9), id).toBe(true);
+      expect(reachable(campus.colliders, z.x, z.z, id === 'hum' ? 3.6 : 2.9), id).toBe(true);
     }
   });
   it('the player can get in range of every friend, star and cat', () => {
@@ -102,6 +102,23 @@ describe('interaction spots are reachable', () => {
       resolveCollisions(campus.colliders, p, 0.45);
       expect(Math.hypot(p.x - x, p.z - z), `crowd ${i}`).toBeLessThan(0.6);
     });
+  });
+  it('has six department halls and no buildings overlapping', () => {
+    expect(
+      BUILDINGS.filter((b) => b.floors)
+        .map((b) => b.id)
+        .sort(),
+    ).toEqual(['chem', 'cse', 'eee', 'hum', 'math', 'phy']);
+    for (const a of BUILDINGS)
+      for (const b of BUILDINGS) {
+        if (a === b) continue;
+        const apart = Math.abs(a.cx - b.cx) >= (a.w + b.w) / 2 || Math.abs(a.cz - b.cz) >= (a.d + b.d) / 2;
+        expect(apart, `${a.id} overlaps ${b.id}`).toBe(true);
+      }
+    for (const b of BUILDINGS) {
+      expect(Math.abs(b.cx) + b.w / 2, b.id).toBeLessThanOrEqual(BOUNDS.x1);
+      expect(b.cz + b.d / 2, b.id).toBeLessThanOrEqual(BOUNDS.z1);
+    }
   });
   it('buildings are solid', () => {
     for (const b of BUILDINGS) {
@@ -244,7 +261,7 @@ function walkable(room: RoomInterior, tx: number, tz: number, within: number): b
 describe('classroom interiors', () => {
   it('builds all four room kinds with finite geometry, far away from the campus', () => {
     // one interior for every (department, room kind) pair that has a course, plus the exam hall
-    const want = new Set(['main:lecture', ...Object.values(COURSES).map((c) => `${c.building}:${c.kind}`)]);
+    const want = new Set(['hum:lecture', ...Object.values(COURSES).map((c) => `${c.building}:${c.kind}`)]);
     expect(Object.keys(rooms).sort()).toEqual([...want].map((w) => `class:${w}`).sort());
     for (const r of Object.values(rooms)) {
       const mesh = r.group.children[0] as unknown as { geometry: typeof campus.solid };
@@ -415,7 +432,7 @@ describe('club house', () => {
 describe('department building floors', () => {
   const list = Object.entries(floorRooms);
 
-  it('has a ground, middle and top corridor for each of the five department buildings', () => {
+  it('has a ground, middle and top corridor for each of the six department halls', () => {
     expect(list.length).toBe(DEPT_IDS.length * 3);
     for (const b of DEPT_IDS)
       for (const v of ['ground', 'mid', 'top'])

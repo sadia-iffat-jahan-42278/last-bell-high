@@ -701,41 +701,6 @@ const econ1: Gen = (t, r) => {
   };
 };
 
-const macro: Gen = (t, r) => {
-  const c = ri(r, 50, 90) * 10;
-  const i = ri(r, 10, 30) * 10;
-  const g = ri(r, 10, 30) * 10;
-  const x = ri(r, 5, 15) * 10;
-  const m = ri(r, 5, 15) * 10;
-  if (t <= 1)
-    return {
-      q: `C = ${c}, I = ${i}, G = ${g}, exports = ${x}, imports = ${m}. What is GDP?`,
-      ans: c + i + g + x - m,
-    };
-  if (t === 2) {
-    const p0 = pick(r, [100, 200, 400]);
-    const pct = pick(r, [2, 5, 10, 20, 25]);
-    return {
-      q: `The price index rises from ${p0} to ${p0 + (p0 * pct) / 100}. What is the inflation rate, in %?`,
-      ans: pct,
-    };
-  }
-  if (t === 3) {
-    const total = 100 * ri(r, 2, 9);
-    const u = pick(r, [5, 10, 20]);
-    return {
-      q: `A labour force has ${total} people, of whom ${(total * u) / 100} are unemployed. What is the unemployment rate, in %?`,
-      ans: u,
-    };
-  }
-  const defl = pick(r, [110, 125, 150, 80]);
-  const nom = defl * ri(r, 5, 20);
-  return {
-    q: `Nominal GDP is ${nom} and the GDP deflator is ${defl}. What is real GDP? (real = nominal ÷ deflator × 100)`,
-    ans: (nom / defl) * 100,
-  };
-};
-
 const accounting: Gen = (t, r) => {
   const a = ri(r, 20, 90) * 10;
   const l = ri(r, 5, 15) * 10;
@@ -803,78 +768,6 @@ const finance: Gen = (t, r) => {
     q: `A project costs $${inv} today and pays $${Math.round((inv + gain) * 1.1)} in one year. At a 10% discount rate, what is its NPV, in dollars?`,
     ans: gain,
   };
-};
-
-const econometrics: Gen = (t, r) => {
-  const x1 = ri(r, 1, 4);
-  const dx = ri(r, 1, 5);
-  const slope = ri(r, 1, 6);
-  const y1 = ri(r, 2, 10);
-  if (t <= 1)
-    return {
-      q: `Two data points: (${x1}, ${y1}) and (${x1 + dx}, ${y1 + slope * dx}). What is the slope of the line through them?`,
-      ans: slope,
-    };
-  if (t === 2) {
-    const a = ri(r, 2, 10);
-    const b = ri(r, 1, 5);
-    const x = ri(r, 1, 8);
-    return { q: `The fitted model is ŷ = ${a} + ${b}x. What is ŷ when x = ${x}?`, ans: a + b * x };
-  }
-  if (t === 3) {
-    const a = ri(r, 2, 10);
-    const b = ri(r, 1, 5);
-    const x = ri(r, 1, 8);
-    const y = a + b * x + ri(r, -4, 4);
-    return {
-      q: `The fitted model is ŷ = ${a} + ${b}x. For x = ${x} the observed y is ${y}. What is the residual (y − ŷ)?`,
-      ans: y - (a + b * x),
-    };
-  }
-  const rr = pick(r, [0.5, 0.6, 0.7, 0.8, 0.9]);
-  const f2 = (v: number): string => v.toFixed(2);
-  return strQ(
-    `The correlation between two variables is r = ${rr}. What is R² for a simple regression of one on the other?`,
-    f2(rr * rr),
-    [f2(rr), f2(rr / 2), f2(1 - rr * rr), f2(Math.sqrt(rr))],
-  );
-};
-
-const trade: Gen = (t, r) => {
-  if (t <= 1) {
-    const rate = pick(r, [2, 4, 5, 10]);
-    const amt = ri(r, 2, 9) * 10;
-    return {
-      q: `The exchange rate is 1 dollar = ${rate} units of a foreign currency. How many units do you get for $${amt}?`,
-      ans: amt * rate,
-    };
-  }
-  if (t === 2) {
-    const p = ri(r, 2, 9) * 10;
-    const tar = pick(r, [10, 20, 25, 50]);
-    return {
-      q: `An imported good costs $${p}. A tariff of ${tar}% is added. What is the price after the tariff, in dollars?`,
-      ans: p + (p * tar) / 100,
-    };
-  }
-  if (t === 3) {
-    const imp = ri(r, 2, 9) * 100;
-    const tar = pick(r, [5, 10, 20]);
-    return {
-      q: `A country imports $${imp} of goods and charges a ${tar}% tariff. How much tariff revenue does it collect, in dollars?`,
-      ans: (imp * tar) / 100,
-    };
-  }
-  const [xa, ya, xb, yb] = [ri(r, 2, 9), ri(r, 2, 9), ri(r, 2, 9), ri(r, 2, 9)];
-  // opportunity cost of one unit of X, measured in Y: Y-output divided by X-output
-  const ocA = ya / xa;
-  const ocB = yb / xb;
-  const right = ocA < ocB ? 'Country A' : ocA > ocB ? 'Country B' : 'Neither (equal opportunity costs)';
-  return strQ(
-    `In one hour Country A makes ${xa} units of X or ${ya} of Y, and Country B makes ${xb} units of X or ${yb} of Y. Which country has the comparative advantage in X?`,
-    right,
-    ['Country A', 'Country B', 'Neither (equal opportunity costs)', 'Both countries'],
-  );
 };
 
 /* ----------------------------- science ----------------------------- */
@@ -1098,7 +991,51 @@ const ml: Gen = (t, r) => {
   );
 };
 
+const circuits: Gen = (t, r) => {
+  if (t === 1) {
+    const i = ri(r, 2, 12);
+    const R = ri(r, 2, 20);
+    return { q: `A ${R} Ω resistor carries ${i} A. What is the voltage across it, in volts?`, ans: i * R };
+  }
+  if (t === 2) {
+    const a = ri(r, 3, 40);
+    const b = ri(r, 3, 40);
+    const c = ri(r, 3, 40);
+    return {
+      q: `Resistors of ${a} Ω, ${b} Ω and ${c} Ω are in series. What is the total resistance in ohms?`,
+      ans: a + b + c,
+    };
+  }
+  if (t === 3) {
+    // pairs whose parallel combination is a whole number
+    const [a, b] = pick(r, [
+      [3, 6],
+      [4, 12],
+      [6, 12],
+      [10, 15],
+      [12, 24],
+      [20, 30],
+      [30, 60],
+      [8, 24],
+    ] as const);
+    const k = ri(r, 1, 4);
+    return {
+      q: `${a * k} Ω and ${b * k} Ω are in parallel. What is the combined resistance in ohms?`,
+      ans: (a * k * b * k) / (a * k + b * k),
+    };
+  }
+  const R1 = ri(r, 1, 9);
+  const R2 = ri(r, 1, 9);
+  const per = ri(r, 2, 6);
+  const V = per * (R1 + R2);
+  return {
+    q: `A ${V} V source feeds ${R1} Ω in series with ${R2} Ω. What power does the ${R2} Ω resistor use, in watts?`,
+    ans: per * per * R2,
+  };
+};
+
 export const GENS = {
+  circuits,
   calc,
   integ,
   linalg,
@@ -1114,11 +1051,8 @@ export const GENS = {
   progOut,
   networks,
   econ1,
-  macro,
   accounting,
   finance,
-  econometrics,
-  trade,
   physics1,
   physics2,
   chem,
@@ -1128,15 +1062,14 @@ export const GENS = {
 } satisfies Record<string, Gen>;
 export type GenId = keyof typeof GENS;
 
-/** Which generators feed which course (by catalogue name). Courses not listed use their hand-written bank only. */
+/** Which generators feed which question bank. Banks not listed use their hand-written questions only. */
 export const COURSE_GENS: Record<string, GenId[]> = {
   'Calculus I': ['calc'],
   'Calculus II': ['integ'],
   'Linear Algebra': ['linalg'],
-  'Statistics I': ['stats1'],
+  'Statistics I': ['stats1', 'prob'],
   'Statistics II': ['stats2'],
   'Discrete Mathematics': ['discrete'],
-  'Probability Theory': ['prob'],
   'Number Theory': ['numtheory'],
   Cryptography: ['crypto', 'numtheory'],
   'Numerical Methods': ['numerical'],
@@ -1144,19 +1077,15 @@ export const COURSE_GENS: Record<string, GenId[]> = {
   'Intro to Programming': ['progOut', 'binary'],
   'Data Structures': ['algo'],
   Algorithms: ['algo'],
-  'Computer Systems': ['binary'],
+  'Computer Architecture': ['binary'],
+  'Digital Logic Design': ['binary'],
   'Computer Networks': ['networks', 'binary'],
-  'Machine Learning I': ['ml'],
+  'Machine Learning': ['ml'],
+  'Circuit Analysis I': ['circuits'],
+  'Circuit Analysis II': ['circuits'],
   'Principles of Economics': ['econ1'],
-  Microeconomics: ['econ1'],
-  Macroeconomics: ['macro'],
-  'Advanced Macroeconomics': ['macro'],
   'Financial Accounting': ['accounting'],
-  'Managerial Accounting': ['accounting'],
-  'Corporate Finance': ['finance'],
   Entrepreneurship: ['finance', 'accounting'],
-  Econometrics: ['econometrics', 'stats2'],
-  'International Trade': ['trade'],
   'Physics I': ['physics1'],
   'Physics II': ['physics2'],
   'General Chemistry': ['chem'],

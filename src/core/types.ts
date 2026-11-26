@@ -1,7 +1,13 @@
 // Shared domain types. The whole save file shape lives in `GameState`.
 
-/** Subject areas: they drive question banks and mastery. Courses belong to one area. */
-export type SubjectId = 'math' | 'science' | 'english' | 'history' | 'cs' | 'econ';
+/** The six departments. Each has its own hall and teaches its own courses. */
+export const DEPT_IDS = ['cse', 'eee', 'math', 'phy', 'chem', 'hum'] as const;
+export type DeptId = (typeof DEPT_IDS)[number];
+/** The departments a student can belong to. Humanities teaches courses to everyone but has no students of its own. */
+export const MAJOR_IDS = ['cse', 'eee', 'math', 'phy', 'chem'] as const;
+export type MajorId = (typeof MAJOR_IDS)[number];
+/** Subject areas for question banks and mastery: one per department. */
+export type SubjectId = DeptId;
 /** Every friend on campus, four per academic year (Maya/Theo/Lina/Sam are freshmen ... Rin/Nora/Jack/Tessa seniors). */
 export const NPC_IDS = [
   'maya',
@@ -26,9 +32,8 @@ export type NpcId = (typeof NPC_IDS)[number];
 export type CourseId = string;
 /** The kind of classroom a course meets in. */
 export type RoomKind = 'lecture' | 'seminar' | 'lab' | 'computer';
-/** The five department buildings that hold the classrooms: Hale (humanities), Newton (maths), Lovelace (computing), Curie (sciences) and Smith (economics). */
-export const DEPT_IDS = ['main', 'math', 'cs', 'lab', 'econ'] as const;
-export type ClassBuilding = (typeof DEPT_IDS)[number];
+/** The department halls that hold the classrooms. */
+export type ClassBuilding = DeptId;
 /** How a student stands relative to you: older (senior), same year (peer) or younger (junior). */
 export type Relation = 'senior' | 'peer' | 'junior';
 /** The five clubs, all housed in the Club House. */
@@ -160,7 +165,7 @@ export interface TermRecord {
   final: ScoreList;
 }
 
-export type Gender = 'female' | 'male' | 'nonbinary';
+export type Gender = 'female' | 'male';
 /** Anyone in the cast: a friend's `NpcId`, or `s_…` (student), `p_…` (professor), `x_…` (staff). */
 export type PersonId = string;
 
@@ -210,9 +215,11 @@ export interface Unlocks {
 }
 
 export interface GameState {
-  v: 2;
+  v: 3;
   name: string;
   gender: Gender;
+  /** The department the player studies in. It decides the curriculum. */
+  major: MajorId;
   look: Look;
   day: number;
   period: number;
@@ -312,7 +319,8 @@ export interface Npc {
   name: string;
   /** Academic year 1 (freshman) .. 4 (senior). */
   year: 1 | 2 | 3 | 4;
-  major: string;
+  /** The department they study in. */
+  major: MajorId;
   role: string;
   emoji: string;
   color: string;
