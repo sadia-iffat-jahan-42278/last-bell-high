@@ -101,8 +101,10 @@ class SoundEngine {
 
   setVolumes(music: number, sfx: number): void {
     this.vol = { music, sfx };
-    if (this.musicG && this.sfxG) {
-      this.musicG.gain.value = music * 0.55;
+    if (this.ctx && this.musicG && this.sfxG) {
+      // Cancel any running fade-in first, otherwise it would finish at the old volume.
+      this.musicG.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.musicG.gain.setValueAtTime(music * 0.55, this.ctx.currentTime);
       this.sfxG.gain.value = sfx;
     }
   }

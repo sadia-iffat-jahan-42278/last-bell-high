@@ -1130,7 +1130,7 @@ export class Scene3D implements SceneHooks {
     const N = NPCS[id];
     const s = game.s;
     const rel = s ? St.relationTo(s, id) : 'peer';
-    const tag = rel === 'senior' ? '🎓 above you' : rel === 'junior' ? '🌱 below you' : '🤝 your year';
+    const tag = rel === 'senior' ? '🎓 Above You' : rel === 'junior' ? '🌱 Below You' : '🤝 Your Year';
     hud.setPrompt({ text: `Talk to ${N.name} (${YEAR_NAMES[N.year - 1]}, ${tag})`, enabled: true });
   }
 
@@ -1163,7 +1163,7 @@ export class Scene3D implements SceneHooks {
     } else if (t.kind === 'npc') {
       this.npcPrompt(t.id);
     } else if (t.kind === 'cat') {
-      hud.setPrompt({ text: 'Pet the cat', enabled: true });
+      hud.setPrompt({ text: 'Pet the Cat', enabled: true });
     }
   }
 

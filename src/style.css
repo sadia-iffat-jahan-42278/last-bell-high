@@ -196,16 +196,6 @@ button {
   animation: popIn 0.28s cubic-bezier(0.2, 1.4, 0.4, 1);
   position: relative;
 }
-.card::before {
-  content: '';
-  position: absolute;
-  left: 34px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: rgba(255, 107, 107, 0.25);
-  pointer-events: none;
-}
 .card h2 {
   margin: 0 0 4px;
   font-size: 26px;
@@ -1368,17 +1358,6 @@ input.txt {
 input.txt:focus {
   box-shadow: 0 0 0 4px rgba(255, 179, 0, 0.5);
 }
-.credits {
-  position: fixed;
-  bottom: 10px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
-  font-weight: 800;
-  z-index: 31;
-}
 
 /* ------------ touch controls ------------ */
 #touch {
@@ -1555,6 +1534,7 @@ body.touch #questbox {
 }
 .slider {
   width: 100%;
+  cursor: pointer;
 }
 .btnrow.left {
   justify-content: flex-start;
@@ -1562,8 +1542,50 @@ body.touch #questbox {
 .spacer {
   height: 12px;
 }
+/* ------------ hover states for the look pickers (character creator and wardrobe) ------------ */
 .chipbtn.clickable {
   cursor: pointer;
+  transition:
+    transform 0.08s,
+    background 0.12s,
+    border-color 0.12s;
+}
+.chipbtn.clickable:hover {
+  background: #fff3c8;
+  border-color: var(--gold);
+  transform: translateY(-1px);
+}
+.chipbtn.clickable.on:hover {
+  border-color: var(--ink);
+}
+.chipbtn.clickable:active {
+  transform: translateY(2px);
+}
+.swatch {
+  cursor: pointer;
+  transition:
+    transform 0.08s,
+    filter 0.15s;
+}
+.swatch:hover {
+  transform: translateY(-2px) scale(1.08);
+  filter: brightness(1.12);
+}
+.swatch:active {
+  transform: translateY(1px);
+}
+/* Locked items can be bought in the wardrobe, but do nothing in the character creator. */
+.chipbtn.locked,
+.creator-card .swatch.lock {
+  cursor: not-allowed;
+}
+.creator-card .swatch.lock:hover,
+.creator-card .swatch.lock:active {
+  transform: none;
+  filter: none;
+}
+input.txt:hover:not(:focus) {
+  box-shadow: 0 0 0 4px rgba(255, 179, 0, 0.25);
 }
 .title-screen.creator {
   justify-content: flex-end;

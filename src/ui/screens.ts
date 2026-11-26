@@ -1,5 +1,6 @@
 // Full-screen flows: title menu, help, settings and the character creator.
 import { Sound } from '../audio/sound';
+import { DEFAULT_NAME } from '../core/state';
 import type { Accessory, Look, Meta, Unlocks } from '../core/types';
 import { hexCss } from '../core/util';
 import { ACCESSORIES, BAGS, BLAZERS, HAIR_COLORS, HAIR_STYLES, SKINS } from '../render/characters';
@@ -14,7 +15,7 @@ export function titleScreen(opts: { hasSave: boolean; saveInfo: string }): Promi
   const t = el(
     'div',
     'title-screen',
-    `<div class="logo">LAST BELL<br><span style="font-size:0.62em;letter-spacing:4px">UNIVERSITY</span></div><div class="tagline">4 years. 8 semesters. 71 courses. One unforgettable degree.</div><div class="titlebtns"></div><div class="credits">A browser 3D game · WASD / touch · progress saves automatically</div>`,
+    `<div class="logo">LAST BELL<br><span style="font-size:0.62em;letter-spacing:4px">UNIVERSITY</span></div><div class="tagline">4 years. 8 semesters. 71 courses. One unforgettable degree.</div><div class="titlebtns"></div>`,
   );
   host.appendChild(t);
   const row = $('.titlebtns', t);
@@ -30,14 +31,14 @@ export function titleScreen(opts: { hasSave: boolean; saveInfo: string }): Promi
     };
     if (opts.hasSave) add(`▶ Continue <small>${opts.saveInfo}</small>`, 'primary', 'continue');
     add('✨ New Game', opts.hasSave ? '' : 'primary', 'new');
-    add('❓ How to play', '', 'help');
+    add('❓ How to Play', '', 'help');
     add('⚙ Settings', '', 'settings');
   });
 }
 
 export function helpScreen(): Promise<void> {
   return ui.info(
-    'How to play',
+    'How to Play',
     `<b>Goal:</b> survive four years (8 semesters), ace your courses, make friends in every year and graduate with the best rank you can.<br><br>
     🕘 <b>Every day has 6 periods</b>: three lectures, lunch, after class and evening. Check the 📌 notice board for today’s rooms.<br>
     🏫 <b>Five department buildings, five storeys each.</b> Every course has its own numbered room (first-year courses low down, final-year courses on the top floors). Check the 📌 notice board or the lobby directory, walk into the right building and <b>climb the stairs</b> at the end of the corridor. Find the room number on the door, press <b>E</b>, take the glowing seat (<b>E</b>) and the lesson starts. Chat with the professor first for a study tip.<br>
@@ -49,7 +50,7 @@ export function helpScreen(): Promise<void> {
     💬 <b>Friends</b> unlock story scenes and permanent bonuses. Gifts help!<br>
     ⭐ Explore! Gold stars and cats are hidden around campus.<br><br>
     <b>Controls:</b> WASD/arrows move · Shift run · E interact · drag or Q/Z rotate camera · scroll zoom · J journal · M mute. On touch: joystick + button.`,
-    'Got it!',
+    'Got It!',
   );
 }
 
@@ -84,10 +85,13 @@ export function settingsScreen(meta: Meta, onChange: (m: Meta) => void): Promise
     meta.settings.music = +(e.target as HTMLInputElement).value;
     onChange(meta);
   };
-  $<HTMLInputElement>('#s-s', card).oninput = (e) => {
-    meta.settings.sfx = +(e.target as HTMLInputElement).value;
+  const effects = $<HTMLInputElement>('#s-s', card);
+  effects.oninput = () => {
+    meta.settings.sfx = +effects.value;
     onChange(meta);
   };
+  // Play a sample when the slider is released, so the new level can be heard.
+  effects.onchange = () => Sound.sfx('ok');
   const done = el('button', 'btn primary', 'Done');
   card.appendChild(done);
   return new Promise((resolve) => {
@@ -119,10 +123,10 @@ export function creatorScreen({
   wrap.appendChild(card);
   host.appendChild(wrap);
   card.innerHTML = `<h2>Create your student</h2><div class="sub">Pick a look. You can change it later in the Journal wardrobe.</div>
-    <div class="field">Name</div><input class="txt" id="c-name" maxlength="14" value="${esc(name)}" placeholder="Your name">
+    <div class="field">Name</div><input class="txt" id="c-name" maxlength="14" value="${esc(name)}" aria-label="Name">
     <div class="field">Skin</div><div id="c-skin"></div><div class="field">Hair style</div><div id="c-hs"></div><div class="field">Hair colour</div><div id="c-hc"></div>
     <div class="field">Blazer</div><div id="c-bl"></div><div class="field">Backpack</div><div id="c-bg"></div><div class="field">Accessory</div><div id="c-ac"></div>
-    <div class="btnrow crfoot"><button class="btn small" id="c-rand">🎲 Random</button><button class="btn primary" id="c-go">Start year ▶</button></div>`;
+    <div class="btnrow crfoot"><button class="btn small" id="c-rand">🎲 Random</button><button class="btn primary" id="c-go">Start Year ▶</button></div>`;
 
   type ColourKey = 'skin' | 'hair' | 'blazer' | 'bag';
   const swatches = (id: string, colours: number[], key: ColourKey, locked?: (i: number) => boolean) => {
@@ -152,7 +156,7 @@ export function creatorScreen({
     for (const o of options) {
       const c = el(
         'span',
-        'chipbtn clickable' + (look[key] === o.id ? ' on' : ''),
+        'chipbtn ' + (o.lock ? 'locked' : 'clickable') + (look[key] === o.id ? ' on' : ''),
         (o.lock ? '🔒 ' : '') + o.name,
       );
       c.onclick = () => {
@@ -184,6 +188,11 @@ export function creatorScreen({
   };
   render();
   onChange(look);
+  const nameInput = $<HTMLInputElement>('#c-name', card);
+  // Clicking the untouched default selects it, so typing replaces it.
+  nameInput.onclick = () => {
+    if (nameInput.value === DEFAULT_NAME) nameInput.select();
+  };
 
   return new Promise((resolve) => {
     const pickFrom = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
@@ -199,7 +208,7 @@ export function creatorScreen({
       onChange(look);
     };
     $('#c-go', card).onclick = () => {
-      const n = $<HTMLInputElement>('#c-name', card).value.trim() || 'Student';
+      const n = nameInput.value.trim() || DEFAULT_NAME;
       Sound.sfx('ok');
       resolve({ name: n, look });
     };
