@@ -1680,3 +1680,146 @@ input.txt:hover:not(:focus) {
 .journal .bold.tight {
   margin-top: 4px;
 }
+
+/* ------------ club registration ------------ */
+.card.clubpick:focus {
+  outline: none;
+}
+.card.clubpick {
+  display: flex;
+  flex-direction: column;
+  width: min(660px, 96vw);
+  overflow: hidden;
+}
+.clubhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.clubcount {
+  font-weight: 900;
+  font-size: 13px;
+  white-space: nowrap;
+}
+/* Only the list of clubs scrolls, so the confirm button is always in view. */
+.clubgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 6px 10px;
+}
+.clubcard {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'ico name mark'
+    'ico desc desc'
+    'ico meta meta';
+  align-content: start;
+  column-gap: 12px;
+  row-gap: 2px;
+  text-align: left;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  box-shadow: 0 4px 0 var(--ink);
+  transition:
+    transform 0.08s,
+    background 0.12s,
+    opacity 0.15s;
+}
+.clubcard:hover {
+  background: #fff3c8;
+  transform: translateY(-2px);
+}
+.clubcard:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+.clubcard:focus-visible {
+  outline: 4px solid var(--sky);
+}
+.clubcard.picked,
+.clubcard.picked:hover {
+  background: #c9ffe9;
+}
+.clubcard.full,
+.clubcard.full:hover,
+.clubcard.full:active {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #fff;
+  transform: none;
+  box-shadow: 0 4px 0 var(--ink);
+}
+.clubcard .ico {
+  grid-area: ico;
+  align-self: center;
+  font-size: 30px;
+  width: 38px;
+  text-align: center;
+}
+.clubcard .name {
+  grid-area: name;
+  align-self: center;
+  font-weight: 900;
+  font-size: 16px;
+}
+.clubcard .mark {
+  grid-area: mark;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 900;
+}
+.clubcard.picked .mark {
+  background: var(--mint);
+}
+.clubcard.picked .mark::after {
+  content: '✓';
+}
+.clubcard .desc {
+  grid-area: desc;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.clubcard .meta {
+  grid-area: meta;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 900;
+  font-size: 11.5px;
+  margin-top: 4px;
+}
+.clubfoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+.clubfoot .sub {
+  margin: 0;
+}
+.clubfoot .btn {
+  margin-left: auto;
+}
+@media (max-width: 560px) {
+  .clubgrid {
+    grid-template-columns: 1fr;
+  }
+}

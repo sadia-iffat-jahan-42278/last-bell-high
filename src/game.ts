@@ -36,11 +36,12 @@ import {
 } from './core/data';
 import {
   PEOPLE,
-  PERSONALITY_AT,
   REACTIONS,
+  COLD_AT,
   REPLIES,
+  WARM_AT,
+  relationPoints,
   TONE_NAME,
-  interactionLevel,
   professorId,
   relationshipLabel,
   replyOptions,
@@ -81,6 +82,7 @@ import { esc } from './ui/dom';
 import type { HudInfo } from './ui/hud';
 import { hud } from './ui/hud';
 import { ui } from './ui/ui';
+import { pickClubs } from './ui/clubs';
 import { STARS } from './world/layout';
 
 /** Describes a classroom the player can walk into. */
@@ -376,7 +378,6 @@ export function applyFx(fx: Fx, npc?: NpcId): Chip[] {
     }
   }
   if (fx.rel && npc) {
-    gainInteraction(s, npc, 5);
     const d = St.addRel(s, npc, fx.rel);
     chips.push({
       text: `${d >= 0 ? '💖' : '💔'} ${NPCS[npc].name} ${signed(d)}`,
@@ -889,7 +890,6 @@ export async function doTest(): Promise<void> {
     St.recordScore(s, 'test', id, 0);
     const pid = professorId(c.prof);
     if (pid) {
-      gainInteraction(s, pid, 5);
       St.addRel(s, pid, -20);
       ui.toast(`💔 ${c.prof} will not forget this: relationship −20`, 'bad', 4200);
     }
@@ -943,12 +943,11 @@ export async function doTest(): Promise<void> {
     ]);
     if (win) {
       St.addCoins(s, 50);
-      gainInteraction(s, 'rin', 5);
       St.addRel(s, 'rin', 10);
       ui.toast('🏆 Won the wager! +50 🪙', 'gold');
     } else {
       St.addCoins(s, -20);
-      St.addRel(s, 'rin', 3);
+      St.addRel(s, 'rin', 5);
       ui.toast('Lost the wager. −20 🪙', 'bad');
     }
   }
@@ -1256,38 +1255,13 @@ export async function clubRegistration(): Promise<void> {
       'Pick one or two. You cannot change them until next semester, and you must actually turn up to the sessions!',
     ],
   ]);
-  const chosen: ClubId[] = [];
-  for (;;) {
-    const left = CLUB_IDS.filter((id) => !chosen.includes(id));
-    const options = left.map((id) => {
-      const C = CLUBS[id];
-      return {
-        icon: C.icon,
-        label: C.name,
-        sub: `${C.blurb} Club level ${St.clubLevel(s.clubs[id].xp)}.`,
-        tag: C.room,
-      };
-    });
-    if (chosen.length)
-      options.push({
-        icon: '✅',
-        label: 'That Is Enough',
-        sub: `Join only ${CLUBS[chosen[0]].name}`,
-        tag: '',
-      });
-    const i = await ui.choice({
-      title: chosen.length ? '📋 Join a second club?' : '📋 Club registration',
-      sub: chosen.length
-        ? `You picked ${CLUBS[chosen[0]].icon} ${CLUBS[chosen[0]].name}. You may add one more (maximum ${CLUB_MAX}).`
-        : `Semester ${t + 1}: choose your first club. This step is mandatory.`,
-      options,
-      cancel: false,
-    });
-    if (i < 0) continue;
-    if (i >= left.length) break;
-    chosen.push(left[i]);
-    if (chosen.length >= CLUB_MAX) break;
-  }
+  const chosen = await pickClubs({
+    semester: t + 1,
+    levels: Object.fromEntries(CLUB_IDS.map((id) => [id, St.clubLevel(s.clubs[id].xp)])) as Record<
+      ClubId,
+      number
+    >,
+  });
   St.joinClubs(s, chosen);
   const list = chosen.map((id) => `${CLUBS[id].icon} ${CLUBS[id].name}`).join(' and ');
   await ui.say([
@@ -1660,8 +1634,7 @@ async function sitAndEat(index: number): Promise<void> {
   Sound.sfx('ok');
   ui.toast(`${d.icon} Yum! +${gain} energy`, 'good');
   for (const id of company) {
-    gainInteraction(s, id, 5);
-    const r = St.addRel(s, id, 3);
+    const r = St.addRel(s, id, 5);
     St.addStress(s, -2);
     ui.toast(`🍽️ Lunch with ${NPCS[id].name}: friendship +${Math.round(r)}`, 'good');
   }
@@ -1756,12 +1729,11 @@ export async function doRooftop(): Promise<void> {
     const skipped = St.classCourse(s);
     const lecturer = skipped ? professorId(COURSES[skipped].prof) : null;
     if (lecturer) {
-      St.addRel(s, lecturer, -6);
-      ui.toast(`💔 ${PEOPLE[lecturer].name} noticed your empty seat: relationship −6`, 'bad', 4200);
+      St.addRel(s, lecturer, -5);
+      ui.toast(`💔 ${PEOPLE[lecturer].name} noticed your empty seat: relationship −5`, 'bad', 4200);
     }
     if (Math.random() < 0.4) {
-      gainInteraction(s, 'x_security', 5);
-      St.addRel(s, 'x_security', -8);
+      St.addRel(s, 'x_security', -10);
       s.caught++;
       s.rep = clamp(s.rep - 12, 0, 100);
       s.detention = true;
@@ -1805,8 +1777,7 @@ export async function doRooftop(): Promise<void> {
   Sound.sfx('ok');
   const who = NPC_IDS[Math.floor(Math.random() * NPC_IDS.length)];
   if (Math.random() < 0.5) {
-    gainInteraction(s, who, 5);
-    St.addRel(s, who, 4);
+    St.addRel(s, who, 5);
     ui.toast(`${NPCS[who].emoji} ${NPCS[who].name} dropped by. +friendship`, 'good');
   }
   await spendPeriod(0, 0);
@@ -1849,37 +1820,23 @@ export async function doNotice(): Promise<void> {
   );
 }
 
-/* ============================== people: interaction, relationship, personality ============================== */
+/* ============================== people: relationship and personality ============================== */
 const signed = (n: number): string => `${n >= 0 ? '+' : '−'}${Math.abs(Math.round(n))}`;
 
-/** One line with both scores, e.g. "🤝 Interaction 40 (Familiar) · 😊 Relationship +42 (Close)". */
+/** One line saying where you stand, e.g. "😊 Relationship +42 (Close)". */
 export function scoreLine(s: GameState, id: PersonId): string {
   const b = St.bondOf(s, id);
   const rel = relationshipLabel(b.rel);
-  return `🤝 Interaction ${Math.round(b.interaction)} (${interactionLevel(b.interaction).name}) · ${rel.icon} Relationship ${signed(b.rel)} (${rel.name})`;
+  return `${rel.icon} Relationship ${signed(b.rel)} (${rel.name})`;
 }
 
-/** Add interaction points and announce it when that reveals the person's personality. */
-export function gainInteraction(s: GameState, id: PersonId, points: number): void {
-  const knew = St.knowsPersonality(s, id);
-  St.addInteraction(s, id, points);
-  if (!knew && St.knowsPersonality(s, id)) announceUnlock(id);
-}
-function announceUnlock(id: PersonId): void {
-  const p = PEOPLE[id];
-  Sound.sfx('star');
-  ui.toast(`🔓 You now know ${p.name}’s personality: ${p.personality.type}`, 'gold', 5200);
-}
-
-/** The profile card. The personality stays locked until the interaction level is reached. */
+/** The profile card: everything there is to know about someone, from the first meeting. */
 export function profileHtml(s: GameState, id: PersonId): string {
   const p = PEOPLE[id];
-  const b = St.bondOf(s, id);
   const P = p.personality;
-  const body = St.knowsPersonality(s, id)
-    ? `<b>🧩 ${P.type}</b><br>${P.traits.join(' · ')}<br>${P.about}<br><br>👍 Enjoys ${P.likes.map((t) => TONE_NAME[t]).join(' and ')}.<br>👎 Dislikes ${P.dislikes.map((t) => TONE_NAME[t]).join(' and ')}.`
-    : `<b>🔒 Personality unknown</b><br>Reach ${PERSONALITY_AT} interaction points to learn it (${Math.max(0, PERSONALITY_AT - Math.round(b.interaction))} to go).`;
-  return `<i>${p.title}</i><br><br>${scoreLine(s, id)}<br><br>${body}`;
+  const bio = p.role === 'friend' ? `${NPCS[id as NpcId].bio}<br><br>` : '';
+  const body = `<b>🧩 ${P.type}</b><br>${P.traits.join(' · ')}<br>${P.about}<br><br>👍 Enjoys ${P.likes.map((t) => TONE_NAME[t]).join(' and ')}.<br>👎 Dislikes ${P.dislikes.map((t) => TONE_NAME[t]).join(' and ')}.`;
+  return `<i>${p.title}</i><br><br>${scoreLine(s, id)}<br><br>${bio}${body}`;
 }
 export async function showProfile(id: PersonId): Promise<void> {
   const p = PEOPLE[id];
@@ -1887,8 +1844,8 @@ export async function showProfile(id: PersonId): Promise<void> {
 }
 
 /**
- * A conversation where you choose how to answer. How it lands depends on the person's personality, so knowing it
- * helps. Interaction always goes up; the relationship can go either way. Once a day per person.
+ * A conversation where you choose how to answer. How it lands depends on the person's personality, so reading
+ * their profile helps. The relationship can go either way. Once a day per person.
  */
 async function toneTalk(id: PersonId): Promise<Mood> {
   const s = S();
@@ -1896,7 +1853,11 @@ async function toneTalk(id: PersonId): Promise<Mood> {
   const b = St.bondOf(s, id);
   const rng = mulberry32(hashStr(id) + s.day * 131 + s.period * 7);
   const opener =
-    b.rel <= -15 ? `…Oh. It’s you. ${p.opener}` : b.rel >= 40 ? `Great to see you! ${p.opener}` : p.opener;
+    relationPoints(b.rel) <= COLD_AT
+      ? `…Oh. It’s you. ${p.opener}`
+      : relationPoints(b.rel) >= WARM_AT
+        ? `Great to see you! ${p.opener}`
+        : p.opener;
   await ui.say([[p.name, opener]]);
   const replies = replyOptions(rng);
   const i = await ui.ask(
@@ -1909,11 +1870,10 @@ async function toneTalk(id: PersonId): Promise<Mood> {
   await ui.say([[p.name, lines[Math.floor(rng() * lines.length)]]]);
   const good = out.relation >= 0;
   ui.toast(
-    `${p.name}: 🤝 Interaction +${out.interaction} · ${good ? '💚' : '💔'} Relationship ${signed(out.relation)}`,
+    `${p.name}: ${good ? '💚' : '💔'} Relationship ${signed(out.relation)}`,
     good ? 'good' : 'bad',
     3800,
   );
-  if (out.unlocked) announceUnlock(id);
   return out.mood;
 }
 
@@ -1942,23 +1902,22 @@ const courseTaughtBy = (s: GameState, name: string): Course | undefined =>
 /** Ask a professor how to study: a better relationship earns a better tip, a bad one earns none. */
 async function studyTip(id: PersonId, c: Course): Promise<void> {
   const s = S();
-  const rel = St.bondOf(s, id).rel;
+  const rel = relationPoints(St.bondOf(s, id).rel);
   if (s.profDay[c.id] === s.day) {
     await ui.say([[c.prof, 'We covered that today. Save some questions for office hours!']]);
     return;
   }
   s.profDay[c.id] = s.day;
-  gainInteraction(s, id, 5);
-  if (rel <= -15) {
+  if (rel <= COLD_AT) {
     await ui.say([[c.prof, 'I suggest you read the syllabus. We have little else to discuss.']]);
     return;
   }
-  const m = St.addMastery(s, c.area, rel >= 40 ? 2.6 : 1.6);
+  const m = St.addMastery(s, c.area, rel >= WARM_AT ? 2.6 : 1.6);
   St.addXP(s, 10);
   await ui.say([
     [
       c.prof,
-      rel >= 40
+      rel >= WARM_AT
         ? `Between us: for ${c.name}, work the old problems first. I will even mark one for you.`
         : 'Do a few practice questions every day. Little and often beats cramming.',
     ],
@@ -1987,7 +1946,7 @@ export async function talkPerson(id: PersonId): Promise<void> {
           : 'Once per day · your answer can help or hurt the relationship',
       tag: b.talked === s.day ? 'done' : 'new',
     },
-    { icon: '📇', label: 'View Profile', sub: 'Scores and personality', tag: '' },
+    { icon: '📇', label: 'View Profile', sub: 'Relationship and personality', tag: '' },
     ...(course
       ? [{ icon: '📚', label: 'Ask for a Study Tip', sub: `${course.name} · once a day`, tag: '' }]
       : []),
@@ -2007,8 +1966,7 @@ export async function talkPerson(id: PersonId): Promise<void> {
 function professorReacts(s: GameState, c: Course, pct: number, weight = 1): void {
   const id = professorId(c.prof);
   if (!id) return;
-  gainInteraction(s, id, 5 * weight);
-  const delta = pct >= 0.85 ? 3 * weight : pct < 0.5 ? -3 * weight : 0;
+  const delta = pct >= 0.85 ? 5 * weight : pct < 0.5 ? -5 * weight : 0;
   if (!delta) return;
   const d = St.addRel(s, id, delta);
   ui.toast(
@@ -2059,7 +2017,7 @@ export async function talkTo(npc: NpcId): Promise<void> {
   const N = NPCS[npc];
   const f = s.friends[npc];
   const beat = N.beats[f.story];
-  if (beat && f.rel >= beat.at) {
+  if (beat && relationPoints(f.rel) >= beat.at) {
     await runBeat(npc, beat);
     return;
   }
@@ -2078,13 +2036,13 @@ export async function talkTo(npc: NpcId): Promise<void> {
         icon: '🎁',
         label: 'Give a Gift',
         sub: canGift
-          ? 'Snack Box (+10) or Energy Drink (+12)'
+          ? 'Snack Box (+10) or Energy Drink (+15)'
           : f.gift === s.day
             ? 'Already gifted today'
             : 'You have no snacks or drinks',
         disabled: !canGift,
       },
-      { icon: '📇', label: 'View Profile', sub: 'Scores and personality' },
+      { icon: '📇', label: 'View Profile', sub: 'Relationship and personality' },
     ],
   });
   if (i === 0) await chat(npc);
@@ -2120,18 +2078,17 @@ async function chat(npc: NpcId): Promise<void> {
     const brushOff = REPLIES.dismissive[pickN % REPLIES.dismissive.length];
     const i = await ui.ask(s.name, 'How do you reply?', [T.a, T.b, brushOff]);
     f.talked = s.day;
-    gainInteraction(s, npc, 10);
     if (i === 2) {
       wentWell = false;
       await ui.say([[N.name, REACTIONS.rude[pickN % REACTIONS.rude.length]]]);
       const d = St.addRel(s, npc, -10);
-      ui.toast(`${N.name}: 🤝 Interaction +10 · 💔 Relationship ${signed(d)}`, 'bad', 3800);
+      ui.toast(`${N.name}: 💔 Relationship ${signed(d)}`, 'bad', 3800);
     } else {
       await ui.say([[N.name, i === 0 ? T.ra : T.rb]]);
-      const d = St.addRel(s, npc, i === 0 ? 6 : 5);
+      const d = St.addRel(s, npc, 5);
       if (i === 1) St.addStress(s, -4);
       const r = St.addXP(s, 10);
-      ui.toast(`${N.name}: 🤝 Interaction +10 · 💚 Relationship ${signed(d)} · ✨ +${r.n} XP`, 'good', 3800);
+      ui.toast(`${N.name}: 💚 Relationship ${signed(d)} · ✨ +${r.n} XP`, 'good', 3800);
     }
   }
   St.gainStat(s, 'cha', 0.2);
@@ -2181,8 +2138,7 @@ async function giveGift(npc: NpcId): Promise<void> {
   const k = options[i];
   s.items[k] = (s.items[k] ?? 1) - 1;
   f.gift = s.day;
-  gainInteraction(s, npc, 10);
-  const d = St.addRel(s, npc, k === 'snack' ? 10 : 12);
+  const d = St.addRel(s, npc, k === 'snack' ? 10 : 15);
   Sound.sfx('star');
   ui.confetti(innerWidth / 2, innerHeight / 2, 25);
   await ui.say([
@@ -2193,7 +2149,7 @@ async function giveGift(npc: NpcId): Promise<void> {
         : 'An energy drink! You’re a lifesaver!',
     ],
   ]);
-  ui.toast(`🎁 ${N.name}: 🤝 Interaction +10 · 💚 Relationship ${signed(d)}`, 'good');
+  ui.toast(`🎁 ${N.name}: 💚 Relationship ${signed(d)}`, 'good');
   await achievements();
   refreshHud();
 }

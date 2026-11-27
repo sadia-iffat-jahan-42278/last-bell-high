@@ -1083,35 +1083,41 @@ export function pickStudents(rng: Rng, count: number, majors: readonly MajorId[]
 }
 
 /* ------------------------------------------------------------------------------------------ */
-/* The two scores. Interaction only ever grows; Relationship swings between -100 and +100.    */
+/* Relationship: how someone feels about you, between -100 and +100.                          */
 /* ------------------------------------------------------------------------------------------ */
-/** Interaction points needed before you can see someone's personality. */
-export const PERSONALITY_AT = 30;
-export const INTERACTION_LEVELS: { min: number; name: string }[] = [
-  { min: 0, name: 'Stranger' },
-  { min: 10, name: 'Acquaintance' },
-  { min: PERSONALITY_AT, name: 'Familiar' },
-  { min: 80, name: 'Well known' },
-  { min: 150, name: 'Old friend of the family' },
-];
-export const interactionLevel = (points: number): { level: number; name: string } => {
-  let level = 0;
-  for (let i = 0; i < INTERACTION_LEVELS.length; i++) if (points >= INTERACTION_LEVELS[i].min) level = i;
-  return { level, name: INTERACTION_LEVELS[level].name };
-};
+/** Relationship as the whole number the player sees. Levels and cut-offs are all judged on this. */
+export const relationPoints = (rel: number): number => Math.sign(rel) * Math.round(Math.abs(rel));
 
-export const relationshipLabel = (rel: number): { name: string; icon: string } =>
-  rel <= -50
-    ? { name: 'Hostile', icon: '💢' }
-    : rel <= -15
-      ? { name: 'Cold', icon: '🥶' }
-      : rel < 15
-        ? { name: 'Neutral', icon: '😐' }
-        : rel < 40
-          ? { name: 'Friendly', icon: '🙂' }
-          : rel < 75
-            ? { name: 'Close', icon: '😊' }
-            : { name: 'Devoted', icon: '💖' };
+/** At or above this someone greets you warmly and gives a better study tip. */
+export const WARM_AT = 20;
+/** At or below this they are cold with you and refuse to give a study tip. */
+export const COLD_AT = -20;
+
+export interface RelationLevel {
+  /** The points at which the level is reached, counting away from zero. */
+  at: number;
+  name: string;
+  icon: string;
+}
+/** The eleven relationship levels, one every 20 points. Everything from -19 to +19 is Neutral. */
+export const RELATION_LEVELS: RelationLevel[] = [
+  { at: -100, name: 'Nemesis', icon: '⚔️' },
+  { at: -80, name: 'Hostile', icon: '💢' },
+  { at: -60, name: 'Resentful', icon: '😠' },
+  { at: -40, name: 'Annoyed', icon: '😒' },
+  { at: -20, name: 'Wary', icon: '🤨' },
+  { at: 0, name: 'Neutral', icon: '😐' },
+  { at: 20, name: 'Friendly', icon: '🙂' },
+  { at: 40, name: 'Trusted', icon: '😄' },
+  { at: 60, name: 'Close', icon: '😊' },
+  { at: 80, name: 'Loyal', icon: '🌟' },
+  { at: 100, name: 'Devoted', icon: '💖' },
+];
+export function relationshipLabel(rel: number): RelationLevel {
+  const clamped = Math.max(-100, Math.min(100, relationPoints(rel)));
+  const step = Math.trunc(clamped / 20) * 20;
+  return RELATION_LEVELS.find((l) => l.at === step) as RelationLevel;
+}
 
 /* ------------------------------------------------------------------------------------------ */
 /* Conversations: pick a reply; how it lands depends on who you are talking to.               */
@@ -1157,7 +1163,7 @@ export const REACTIONS: Record<Mood, string[]> = {
   ],
   rude: ['Wow. Fine.', 'Then I will not keep you.', 'That was uncalled for.'],
 };
-export const RELATION_CHANGE: Record<Mood, number> = { liked: 8, fine: 2, disliked: -7, rude: -10 };
+export const RELATION_CHANGE: Record<Mood, number> = { liked: 10, fine: 5, disliked: -5, rude: -10 };
 
 /** Four replies to choose from: three different tones and one brush-off, in random order. */
 export function replyOptions(rng: Rng): { tone: ReplyTone; text: string }[] {

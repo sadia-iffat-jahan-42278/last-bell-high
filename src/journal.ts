@@ -24,13 +24,12 @@ import {
 } from './core/data';
 import {
   PEOPLE,
-  PERSONALITY_AT,
   PERSON_IDS,
   PROFESSORS,
   STAFF,
   STUDENTS,
   TONE_NAME,
-  interactionLevel,
+  relationPoints,
   relationshipLabel,
   type Person,
 } from './core/people';
@@ -115,17 +114,14 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
       VIEWS[tab]($('#jbody', card));
     };
 
-    /** The two scores with a person: Interaction (only grows) and Relationship (either way). */
+    /** Where you stand with a person. */
     const scores = (id: PersonId): string => {
       const b = St.bondOf(s, id);
       const r = relationshipLabel(b.rel);
-      const points = Math.round(b.interaction);
-      return `<div class="statrow"><span class="nm" style="width:128px;white-space:nowrap">🤝 Interaction</span>${meter(Math.min(points, PERSONALITY_AT), PERSONALITY_AT, '#4aa8ff')}<b class="wide">${points} · ${interactionLevel(points).name}</b></div><div class="statrow"><span class="nm" style="width:128px;white-space:nowrap">${r.icon} Relationship</span>${meter(Math.abs(b.rel), 100, b.rel < 0 ? '#ff6b6b' : '#2fd3a0')}<b class="wide">${b.rel > 0 ? '+' : ''}${Math.round(b.rel)} · ${r.name}</b></div>`;
+      return `<div class="statrow"><span class="nm" style="width:128px;white-space:nowrap">${r.icon} Relationship</span>${meter(Math.abs(b.rel), 100, b.rel < 0 ? '#ff6b6b' : '#2fd3a0')}<b class="auto" style="white-space:nowrap">${b.rel > 0 ? '+' : ''}${relationPoints(b.rel)} · ${r.name}</b></div>`;
     };
-    /** Their personality, hidden until you have interacted enough. */
+    /** Their personality, visible from the start. */
     const personality = (id: PersonId): string => {
-      if (!St.knowsPersonality(s, id))
-        return `<div class="note2">🔒 Personality unknown: ${PERSONALITY_AT - Math.round(St.bondOf(s, id).interaction)} more interaction points needed</div>`;
       const P = PEOPLE[id].personality;
       return `<div class="note2"><b>🧩 ${P.type}</b> (${P.traits.join(', ')}). ${P.about}<br>👍 ${P.likes.map((t) => TONE_NAME[t]).join(', ')} · 👎 ${P.dislikes.map((t) => TONE_NAME[t]).join(', ')}</div>`;
     };
@@ -219,9 +215,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
           const N = NPCS[id];
           const f = s.friends[id];
           const next = N.beats[f.story];
-          // the biography is part of getting to know someone, so it unlocks with the personality
-          const bio = St.knowsPersonality(s, id) ? `<br>${N.bio}` : '';
-          return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio"><b>${DEPARTMENTS[N.major].school}</b> · ${relationText(s, id)}${bio}</div>${scores(id)}${personality(id)}
+          return `<div class="box" style="border-color:${N.color}"><h4>${N.emoji} ${N.name} · ${N.role}</h4><div class="bio"><b>${DEPARTMENTS[N.major].school}</b> · ${relationText(s, id)}<br>${N.bio}</div>${scores(id)}${personality(id)}
               <div class="story">Story: ${f.story}/3 ${next ? `· next at relationship ${next.at}` : '· complete'}</div>${N.perks
                 .map(
                   (p) =>
@@ -250,7 +244,7 @@ export function openJournal(startTab: TabId = 'me'): Promise<void> {
             )
             .join('')}</div>`;
         b.innerHTML =
-          `<div class="hint">${PERSON_IDS.length} people make up Engineers of the Elite, including the 16 friends on their own page. Every conversation raises Interaction; how you answer moves the Relationship up or down. A personality appears at ${PERSONALITY_AT} interaction points.</div>` +
+          `<div class="hint">${PERSON_IDS.length} people make up Engineers of the Elite, including the 16 friends on their own page. How you answer in conversation moves your Relationship up or down.</div>` +
           group('🎓 Professors', PROFESSORS) +
           group('🧑‍🎓 Classmates', STUDENTS) +
           group('🧰 Staff', STAFF);
