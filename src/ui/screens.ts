@@ -56,7 +56,7 @@ export function helpScreen(): Promise<void> {
     🍜 <b>The canteen is a real room.</b> Walk in, order at the hot-food counter, carry your tray to a table and sit down to eat (lunch uses the period). Friends eat there too, so sit near them! The store and vending machines are open all day.<br>
     🎭 <b>The Club House</b> holds five clubs: chess, music, dance, debate and sports, each in its own themed room. Joining is <b>mandatory</b>: every semester you register for <b>one or two</b> clubs (never more) and must attend. Sessions are mini-games that raise your stats and earn coins.<br>
     ⚡ <b>Energy & stress</b> matter: tired students answer slower. Eat, relax on the rooftop and sleep.<br>
-    💬 <b>Talk to anyone.</b> All 87 people, students, professors and staff, have their own personality. Every conversation raises your <b>Interaction</b> points (which only go up). How you answer moves your <b>Relationship</b> up or down. At 30 interaction points you learn their personality, so you know what they like. Friends also unlock story scenes and permanent bonuses; gifts help!<br>
+    💬 <b>Talk to anyone.</b> All 87 people, students, professors and staff, have their own personality. How you answer moves your <b>Relationship</b> up or down. Check their profile to see what they like. Friends also unlock story scenes and permanent bonuses; gifts help!<br>
     ⭐ Explore! Gold stars and cats are hidden around campus.<br><br>
     <b>Controls:</b> WASD/arrows move · Shift run · E interact · drag or Q/Z rotate camera · scroll zoom · J journal · M mute. On touch: joystick + button.`,
     'Got It!',

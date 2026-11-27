@@ -47,7 +47,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'The Study Guide',
         scene: [['Maya', 'Hey, um… I made a study guide. For everyone. Mostly for you. Do you want it?']],
         prompt: 'Maya holds out a neatly stapled guide.',
@@ -60,7 +60,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
           {
             label: 'Teach me how you make one.',
             result: ['Maya lights up. “Step one: stop highlighting everything. Step two: dinosaurs.”'],
-            fx: { stat: { int: 1 }, rel: 8 },
+            fx: { stat: { int: 1 }, rel: 10 },
           },
         ],
       },
@@ -76,17 +76,17 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
           {
             label: 'Breathe. I’ll quiz you.',
             result: ['She smiles shakily. “Okay. Quiz me. Please be gentle.”'],
-            fx: { rel: 8, stat: { cha: 1 }, stress: -6 },
+            fx: { rel: 10, stat: { cha: 1 }, stress: -6 },
           },
           {
             label: 'Let’s turn it into a game.',
             result: ['“A game? Oh no, I’m competitive.” She’s already grinning.'],
-            fx: { rel: 8, stat: { foc: 1 } },
+            fx: { rel: 10, stat: { foc: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Study Group',
         scene: [
           ['Maya', 'You know what’s funny? I used to hate group study.'],
@@ -153,7 +153,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Relay Practice',
         scene: [['Kai', 'We’re short a runner for relay practice. Come on, jog with us!']],
         prompt: 'Kai bounces on his toes.',
@@ -161,12 +161,12 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
           {
             label: 'Count me in!',
             result: ['You jog three laps. Kai high-fives you so hard it echoes.'],
-            fx: { stat: { sta: 1 }, rel: 6, stress: -5 },
+            fx: { stat: { sta: 1 }, rel: 5, stress: -5 },
           },
           {
             label: 'I’ll cheer from the bench.',
             result: ['“Best cheerleader ever!” He tosses you a sports drink.'],
-            fx: { stat: { cha: 1 }, rel: 4, items: { drink: 1 } },
+            fx: { stat: { cha: 1 }, rel: 5, items: { drink: 1 } },
           },
         ],
       },
@@ -179,17 +179,17 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
           {
             label: 'You’ve got this, captain.',
             result: ['“Yeah. Yeah, I do.” He straightens up. “Thanks.”'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
           {
             label: 'Race you to the canteen!',
             result: ['He’s gone before you finish the sentence. You lose, but you’re laughing.'],
-            fx: { rel: 8, stat: { sta: 1 }, stress: -10 },
+            fx: { rel: 10, stat: { sta: 1 }, stress: -10 },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Honorary Captain',
         scene: [['Kai', 'Team voted. You’re honorary captain. No take-backs.']],
         prompt: 'Kai drapes a jacket over your shoulders.',
@@ -252,7 +252,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'A Little Melody',
         scene: [
           ['Zoe', 'I wrote a melody. Want to tap along? It’s only four notes. They’re very good notes.'],
@@ -262,12 +262,12 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
           {
             label: 'Of course!',
             result: ['You tap along. It’s four good notes. You can’t stop humming them.'],
-            fx: { stat: { cre: 1 }, rel: 6 },
+            fx: { stat: { cre: 1 }, rel: 5 },
           },
           {
             label: 'I can’t keep rhythm.',
             result: ['“Perfect. Beginners have no bad habits.” She sounds delighted.'],
-            fx: { stat: { cre: 1 }, rel: 4, stress: -5 },
+            fx: { stat: { cre: 1 }, rel: 5, stress: -5 },
           },
         ],
       },
@@ -280,17 +280,17 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
           {
             label: 'I’ll clap on the beat.',
             result: ['“Promise?” “Promise.” She lets out a long breath.'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
           {
             label: 'Picture them as metronomes.',
             result: ['She laughs so hard she snorts. Then she looks lighter.'],
-            fx: { rel: 8, stat: { cre: 1 } },
+            fx: { rel: 10, stat: { cre: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'The Duet',
         scene: [
           ['Zoe', 'I wrote you a duet. Don’t make it weird.'],
@@ -356,7 +356,7 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'The Wager',
         scene: [
           [
@@ -370,11 +370,11 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
         ],
         prompt: 'Rin holds out a hand without looking at you.',
         options: [
-          { label: 'Deal.', result: ['A handshake. Firm. Dangerous.'], fx: { rel: 6, flag: 'rinWager' } },
+          { label: 'Deal.', result: ['A handshake. Firm. Dangerous.'], fx: { rel: 5, flag: 'rinWager' } },
           {
             label: 'No thanks. I’d rather eat in peace.',
             result: ['“Hm. Smart. Or scared.” She almost smiles.'],
-            fx: { rel: 3 },
+            fx: { rel: 5 },
           },
         ],
       },
@@ -387,17 +387,17 @@ const CORE: Record<'maya' | 'kai' | 'zoe' | 'rin', Npc> = {
           {
             label: 'Nobody’s perfect.',
             result: ['“Annoying. And true.” She exhales.'],
-            fx: { rel: 8, stress: -8 },
+            fx: { rel: 10, stress: -8 },
           },
           {
             label: 'Perfect is boring.',
             result: ['“Is it?” She tilts her head. “…Maybe it is.”'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'A Rival Worth Having',
         scene: [['Rin', 'I used to think you were an obstacle. Now you’re a rival worth having.']],
         prompt: 'It might be the nicest thing Rin has ever said.',

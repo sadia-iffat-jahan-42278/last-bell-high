@@ -38,10 +38,9 @@ security headers) or run `vercel` from this folder.
   random: the campus, corridors and canteen are crowded at lunch, quieter during lectures and nearly empty in the
   evening. Professors pace at the front, kitchen staff work along the counter, dancers and athletes move around their
   club rooms, and latecomers take their chairs when the lecture starts. Walk up to someone and they stop to talk.
-- **Two scores with everyone:** _Interaction_ only goes up; _Relationship_ runs from -100 (hostile) to +100 (devoted).
-  Everyone has a personality (a type, traits, and tones they like or dislike) that stays hidden until you reach 30
-  interaction points. How you answer in conversation, your lecture results, cheating and skipping class all move the
-  relationship.
+- **A relationship with everyone:** it runs from -100 (nemesis) to +100 (devoted) in eleven levels, one every 20 points. Everyone has a personality (a type,
+  traits, and tones they like or dislike), shown in their profile from the first meeting. How you answer in
+  conversation, your lecture results, cheating and skipping class all move the relationship.
 - **Your student:** pick a gender and a department in the creator; the default name follows the gender.
 - **Six department halls:** each five storeys tall with a lobby, a corridor on every floor and a real staircase you
   walk up and down: CSE Hall, EEE Hall, Math Hall, Physics Hall, Chemistry Hall and Humanities Hall (which also holds

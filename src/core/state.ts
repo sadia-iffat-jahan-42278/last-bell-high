@@ -47,15 +47,7 @@ import type {
   SubjectId,
   Weather,
 } from './types';
-import {
-  PEOPLE,
-  PERSONALITY_AT,
-  RELATION_CHANGE,
-  STUDENTS,
-  moodFor,
-  type Mood,
-  type ReplyTone,
-} from './people';
+import { PEOPLE, RELATION_CHANGE, STUDENTS, moodFor, type Mood, type ReplyTone } from './people';
 import { CLUB_IDS, MAJOR_IDS } from './types';
 import { clamp, hashStr, mulberry32, type Rng } from './util';
 
@@ -139,7 +131,7 @@ export function newState(
     seenQ: {},
     showcase: [],
     friends: Object.fromEntries(
-      npcIds.map((k) => [k, { interaction: 0, rel: 0, story: 0, talked: -1, gift: -1 }]),
+      npcIds.map((k) => [k, { rel: 0, story: 0, talked: -1, gift: -1 }]),
     ) as GameState['friends'],
     people: {},
     items: { snack: 2, drink: 1 },
@@ -346,17 +338,18 @@ export function addMastery(s: GameState, subj: SubjectId, v: number): number {
   s.touched[subj] = true;
   return v;
 }
-/* ---------- the two scores you have with every person ---------- */
-/** Your scores with a person (created on first use for people who are not one of the sixteen friends). */
+/* ---------- your relationship with every person ---------- */
+/** Where you stand with a person (created on first use for people who are not one of the sixteen friends). */
 export function bondOf(s: GameState, id: PersonId): Bond {
   if (Object.prototype.hasOwnProperty.call(s.friends, id)) return s.friends[id as NpcId];
-  return (s.people[id] ??= { interaction: 0, rel: 0, talked: -1 });
+  return (s.people[id] ??= { rel: 0, talked: -1 });
 }
-/** Interaction points only ever go up. Returns the points added. */
-export function addInteraction(s: GameState, id: PersonId, points: number): number {
-  const added = Math.max(0, Math.round(points));
-  bondOf(s, id).interaction += added;
-  return added;
+/** Every relationship change is a multiple of this. */
+export const REL_STEP = 5;
+/** Round a change to the nearest multiple of `REL_STEP`. A change that is not zero is at least one step. */
+export function relStep(v: number): number {
+  if (!v) return 0;
+  return Math.sign(v) * Math.max(REL_STEP, Math.round(Math.abs(v) / REL_STEP) * REL_STEP);
 }
 /**
  * Relationship points move both ways, between -100 and +100. Charisma and the Social Butterfly perk make good
@@ -366,30 +359,20 @@ export function addRel(s: GameState, id: PersonId, v: number): number {
   if (v > 0) v *= (1 + stat(s, 'cha') * 0.04) * (has(s, 'social') ? 1.5 : 1);
   const b = bondOf(s, id);
   const o = b.rel;
-  b.rel = clamp(b.rel + v, -100, 100);
+  b.rel = clamp(b.rel + relStep(v), -100, 100);
   return b.rel - o;
 }
-/** A person's personality stays hidden until you have interacted with them enough. */
-export const knowsPersonality = (s: GameState, id: PersonId): boolean =>
-  bondOf(s, id).interaction >= PERSONALITY_AT;
-
 export interface Conversation {
   mood: Mood;
-  /** Interaction points gained (always positive). */
-  interaction: number;
   /** Change in relationship (positive or negative). */
   relation: number;
-  /** This conversation revealed their personality. */
-  unlocked: boolean;
 }
 /** Have a conversation in which you answer in a certain tone. */
 export function converse(s: GameState, id: PersonId, tone: ReplyTone): Conversation {
-  const knew = knowsPersonality(s, id);
   const mood = moodFor(PEOPLE[id], tone);
-  const interaction = addInteraction(s, id, 10);
   const relation = addRel(s, id, RELATION_CHANGE[mood]);
   bondOf(s, id).talked = s.day;
-  return { mood, interaction, relation, unlocked: !knew && knowsPersonality(s, id) };
+  return { mood, relation };
 }
 export const clubLevel = (xp: number): number => Math.min(10, 1 + Math.floor(xp / 60));
 export const clubProgress = (xp: number): number => (clubLevel(xp) >= 10 ? 1 : (xp % 60) / 60);
@@ -626,6 +609,12 @@ export function migrateSave(raw: unknown): GameState | null {
   if (!isRecord(s.people)) s.people = {};
   if (!GENDERS.some((g) => g.id === s.gender)) s.gender = 'female';
   if (!MAJOR_IDS.includes(s.major)) s.major = 'cse';
+  // Interaction points no longer exist: drop them from saves that still carry them.
+  for (const b of [...Object.values(s.friends), ...Object.values(s.people)]) {
+    delete (b as unknown as Json).interaction;
+    // Scores saved before changes came in fixed steps are moved to the nearest step.
+    b.rel = Math.sign(b.rel) * Math.round(Math.abs(b.rel) / REL_STEP) * REL_STEP || 0;
+  }
   return s;
 }
 

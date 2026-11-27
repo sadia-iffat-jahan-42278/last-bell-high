@@ -246,8 +246,10 @@ export interface Club {
   icon: string;
   /** Name of the practice activity. */
   game: string;
-  /** What the club does, shown at registration and in the journal. */
+  /** What the club does, shown by the registrar. */
   blurb: string;
+  /** One line for the registration cards. */
+  short: string;
   /** The room inside the Club House. */
   room: string;
   /** Main and secondary stat trained by the club. */
@@ -263,6 +265,7 @@ export const CLUBS: Record<ClubId, Club> = {
     icon: '♟️',
     game: 'Chess Puzzles',
     blurb: 'Solve tactics puzzles on real boards: mates, forks and winning captures.',
+    short: 'Solve tactics puzzles',
     room: 'Chess Room',
     stat: 'int',
     stat2: 'foc',
@@ -273,6 +276,7 @@ export const CLUBS: Record<ClubId, Club> = {
     icon: '🎵',
     game: 'Rhythm Rehearsal',
     blurb: 'Rehearse on stage with a full band: hit the falling notes in time.',
+    short: 'Hit the falling notes in time',
     room: 'Music Room',
     stat: 'cre',
     stat2: 'foc',
@@ -283,6 +287,7 @@ export const CLUBS: Record<ClubId, Club> = {
     icon: '💃',
     game: 'Dance Battle',
     blurb: 'Follow the choreography in the mirrored studio: arrows on the beat.',
+    short: 'Follow the arrows on the beat',
     room: 'Dance Studio',
     stat: 'sta',
     stat2: 'cha',
@@ -293,6 +298,7 @@ export const CLUBS: Record<ClubId, Club> = {
     icon: '🎤',
     game: 'Debate Round',
     blurb: 'Spot the logical flaw in your opponent’s argument before the judges decide.',
+    short: 'Spot the flaw in an argument',
     room: 'Debate Hall',
     stat: 'cha',
     stat2: 'int',
@@ -303,6 +309,7 @@ export const CLUBS: Record<ClubId, Club> = {
     icon: '🏀',
     game: 'Dodgeball Drill',
     blurb: 'Train on the indoor court: dodge, grab stars and keep your lives.',
+    short: 'Dodge balls and grab stars',
     room: 'Sports Hall',
     stat: 'sta',
     stat2: 'foc',

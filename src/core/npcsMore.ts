@@ -44,7 +44,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Dorm Debug',
         scene: [['Theo', 'My dorm wifi died and I have a lab due. Can you help me debug?']],
         prompt: 'Theo waves a router cable at you.',
@@ -52,12 +52,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Reboot it.',
             result: ['Theo stares at the blinking lights. “You are a wizard.” It works.'],
-            fx: { rel: 6, stat: { int: 1 } },
+            fx: { rel: 5, stat: { int: 1 } },
           },
           {
             label: 'Share my hotspot.',
             result: ['“You are a hero. I owe you a snack.”'],
-            fx: { rel: 6, items: { snack: 1 } },
+            fx: { rel: 5, items: { snack: 1 } },
           },
         ],
       },
@@ -70,17 +70,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'HTML counts!',
             result: ['“It really does not.” He laughs anyway. “Thanks.”'],
-            fx: { rel: 8, stress: -6 },
+            fx: { rel: 10, stress: -6 },
           },
           {
             label: 'Teach me your two.',
             result: ['You trade tips for an hour. Both of you learn something.'],
-            fx: { rel: 8, stat: { foc: 1 } },
+            fx: { rel: 10, stat: { foc: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Hackathon Weekend',
         scene: [
           [
@@ -141,7 +141,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Front Page',
         scene: [['Lina', 'The paper needs a student profile. I nominated you. You are very… profile-able.']],
         prompt: 'Lina clicks her pen.',
@@ -149,12 +149,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Do the interview.',
             result: ['An hour later you are a minor campus celebrity.'],
-            fx: { rel: 6, stat: { cha: 1 } },
+            fx: { rel: 5, stat: { cha: 1 } },
           },
           {
             label: 'Only if I pick the photo.',
             result: ['You pick a terrible photo on purpose. She prints it anyway.'],
-            fx: { rel: 6, coins: 25 },
+            fx: { rel: 5, coins: 25 },
           },
         ],
       },
@@ -167,17 +167,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Talk it out loud.',
             result: ['Halfway through your rambling she starts typing furiously.'],
-            fx: { rel: 8, stat: { cre: 1 } },
+            fx: { rel: 10, stat: { cre: 1 } },
           },
           {
             label: 'Take a walk first.',
             result: ['Fresh air. Three paragraphs appear.'],
-            fx: { rel: 8, stress: -8 },
+            fx: { rel: 10, stress: -8 },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'The Exposé',
         scene: [['Lina', 'I wrote about the library’s secret quiet room. I mentioned you. Positively.']],
         prompt: 'She hands you a printed copy.',
@@ -233,7 +233,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Staff Meal',
         scene: [['Sam', 'Closing-shift leftovers. Take a snack box, or help me stack chairs and take two?']],
         prompt: 'Sam holds up a tray.',
@@ -246,7 +246,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Help stack chairs.',
             result: ['Twenty chairs later you have two snacks and a friend.'],
-            fx: { items: { snack: 2 }, rel: 6, stat: { sta: 1 } },
+            fx: { items: { snack: 2 }, rel: 5, stat: { sta: 1 } },
           },
         ],
       },
@@ -259,17 +259,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Apron on!',
             result: ['You deliver nineteen lattes without a single spill. Almost.'],
-            fx: { rel: 8, coins: 30, stat: { cha: 1 } },
+            fx: { rel: 10, coins: 30, stat: { cha: 1 } },
           },
           {
             label: 'I will lose the orders.',
             result: ['“Honest. Stay at the till then.” You count coins instead.'],
-            fx: { rel: 8, coins: 20 },
+            fx: { rel: 10, coins: 20 },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Employee of the Month',
         scene: [
           ['Sam', 'They made me employee of the month. I put you on the plaque as “unofficial assistant”.'],
@@ -325,7 +325,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Starter Pack',
         scene: [['Diego', 'Sample pack for you. Honest review required. Five stars preferred.']],
         prompt: 'Diego presents a glittery envelope.',
@@ -333,12 +333,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Five stars!',
             result: ['“I knew I liked you.” He adds a free study sheet.'],
-            fx: { items: { notes: 1 }, rel: 6 },
+            fx: { items: { notes: 1 }, rel: 5 },
           },
           {
             label: 'Honest review: three.',
             result: ['“Brutal. Fair.” He writes it on a sign.'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
         ],
       },
@@ -351,17 +351,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Reinvest it.',
             result: ['He buys better stickers. Sales double.'],
-            fx: { rel: 8, coins: 30 },
+            fx: { rel: 10, coins: 30 },
           },
           {
             label: 'Treat yourself.',
             result: ['He treats you both to curry.'],
-            fx: { rel: 8, stress: -8 },
+            fx: { rel: 10, stress: -8 },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Pitch Night',
         scene: [['Diego', 'Startup pitch night. I need a co-pitcher. Wear something confident.']],
         prompt: 'Diego adjusts a very bold tie.',
@@ -417,7 +417,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Problem Set',
         scene: [['Iris', 'You look lost at problem four. Everyone is. It is a trick question.']],
         prompt: 'Iris slides a pencil across the table.',
@@ -425,12 +425,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Show me the trick.',
             result: ['Three lines of reasoning and the answer pops out.'],
-            fx: { rel: 6, stat: { int: 1 } },
+            fx: { rel: 5, stat: { int: 1 } },
           },
           {
             label: 'Let me try first.',
             result: ['She watches, nodding. You get it on the second try.'],
-            fx: { rel: 6, stat: { foc: 1 } },
+            fx: { rel: 5, stat: { foc: 1 } },
           },
         ],
       },
@@ -443,17 +443,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Make her tea.',
             result: ['“You are a good person.” She grades seven papers in an hour.'],
-            fx: { rel: 8, stress: -6 },
+            fx: { rel: 10, stress: -6 },
           },
           {
             label: 'Sort the pile.',
             result: ['Sorting is half the battle. The pile looks smaller.'],
-            fx: { rel: 8, stat: { foc: 1 } },
+            fx: { rel: 10, stat: { foc: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Dean’s List Letter',
         scene: [
           [
@@ -510,7 +510,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Loose Wires',
         scene: [['Yuki', 'Bolt will not turn left. Can you hold the flashlight while I look?']],
         prompt: 'Yuki disappears into a tangle of cables.',
@@ -518,12 +518,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Hold the light.',
             result: ['You hold the light for an hour. Bolt turns left. Everyone cheers.'],
-            fx: { rel: 6, stat: { foc: 1 } },
+            fx: { rel: 5, stat: { foc: 1 } },
           },
           {
             label: 'Debug the code.',
             result: ['A missing semicolon. As always.'],
-            fx: { rel: 6, stat: { int: 1 } },
+            fx: { rel: 5, stat: { int: 1 } },
           },
         ],
       },
@@ -536,17 +536,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'He will do great.',
             result: ['“Statistically unlikely, but thank you.” She smiles.'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
           {
             label: 'Run one last test.',
             result: ['Bolt passes. Barely. She cries happy tears into his casing.'],
-            fx: { rel: 8, stress: -6 },
+            fx: { rel: 10, stress: -6 },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Second Place Trophy',
         scene: [['Yuki', 'We got second! The winning robot was bigger. Bolt wants you to hold the trophy.']],
         prompt: 'Bolt beeps proudly.',
@@ -604,7 +604,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Petition',
         scene: [['Marcus', 'I am collecting signatures for later library hours. Will you sign?']],
         prompt: 'Marcus offers a clipboard and a pen on a string.',
@@ -612,12 +612,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Sign it.',
             result: ['Your signature goes first. Marcus beams: “Trendsetter!”'],
-            fx: { rel: 6, stat: { cha: 1 } },
+            fx: { rel: 5, stat: { cha: 1 } },
           },
           {
             label: 'Read the fine print first.',
             result: ['No fine print. He actually is that sincere.'],
-            fx: { rel: 6, stat: { int: 1 } },
+            fx: { rel: 5, stat: { int: 1 } },
           },
         ],
       },
@@ -630,17 +630,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Split it evenly.',
             result: ['Fair. Boring. Everyone is a little happy.'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
           {
             label: 'Fund the weirdest club.',
             result: ['The Competitive Napping club gets a trophy shelf.'],
-            fx: { rel: 8, stat: { cre: 1 } },
+            fx: { rel: 10, stat: { cre: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Passing the Gavel',
         scene: [['Marcus', 'Next year’s council needs a mentor. I recommended you. Politely. Loudly.']],
         prompt: 'Marcus holds out a tiny wooden gavel.',
@@ -696,7 +696,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Practice Round',
         scene: [['Ava', 'I need a sparring partner. Argue with me about whether cereal is a soup.']],
         prompt: 'Ava cracks her knuckles.',
@@ -704,12 +704,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Soup. Obviously.',
             result: ['You lose gloriously. She says you have great potential.'],
-            fx: { rel: 6, stat: { cha: 1 } },
+            fx: { rel: 5, stat: { cha: 1 } },
           },
           {
             label: 'Cereal is cereal.',
             result: ['She nods. “Circular, but I admire the commitment.”'],
-            fx: { rel: 6, stat: { int: 1 } },
+            fx: { rel: 5, stat: { int: 1 } },
           },
         ],
       },
@@ -724,17 +724,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Paddle with me.',
             result: ['You run mock rounds all night. She sleeps better after.'],
-            fx: { rel: 8, stress: -6 },
+            fx: { rel: 10, stress: -6 },
           },
           {
             label: 'You are the best.',
             result: ['“Do not flatter me. Keep going.”'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Closing Statement',
         scene: [['Ava', 'I lost nationals by one point. My closing statement was your idea. Thank you.']],
         prompt: 'Ava is smiling anyway.',
@@ -786,7 +786,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Sign-Up Sheet',
         scene: [['Felix', 'Volunteers wanted for the hackathon. Free energy drinks and a t-shirt.']],
         prompt: 'Felix shakes a laminated sign-up sheet.',
@@ -794,12 +794,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Volunteer.',
             result: ['You hand out drinks to sleepy programmers. One cries with gratitude.'],
-            fx: { rel: 6, items: { drink: 1 } },
+            fx: { rel: 5, items: { drink: 1 } },
           },
           {
             label: 'Make the poster.',
             result: ['Your poster has a dragon on it. Sign-ups triple.'],
-            fx: { rel: 6, stat: { cre: 1 } },
+            fx: { rel: 5, stat: { cre: 1 } },
           },
         ],
       },
@@ -814,17 +814,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Restart it.',
             result: ['It works. Nobody knows why. Felix hugs the keyboard.'],
-            fx: { rel: 8, stat: { int: 1 } },
+            fx: { rel: 10, stat: { int: 1 } },
           },
           {
             label: 'Breathe with him.',
             result: ['In. Out. The site fixes itself while you meditate.'],
-            fx: { rel: 8, stress: -8 },
+            fx: { rel: 10, stress: -8 },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Demo Day',
         scene: [['Felix', 'Your idea won the audience award at demo day. I told them it was yours.']],
         prompt: 'Felix holds out a tiny glass trophy.',
@@ -882,7 +882,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Reading List',
         scene: [['Nora', 'I made you a reading list. Five items. No more. I counted twice.']],
         prompt: 'Nora hands you a neatly folded page.',
@@ -890,12 +890,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Read it all.',
             result: ['By the end of the week you understand five things deeply.'],
-            fx: { rel: 6, stat: { int: 1 } },
+            fx: { rel: 5, stat: { int: 1 } },
           },
           {
             label: 'Pick two to start.',
             result: ['“Smart. Slow is fast.” She looks pleased.'],
-            fx: { rel: 6, stat: { foc: 1 } },
+            fx: { rel: 5, stat: { foc: 1 } },
           },
         ],
       },
@@ -908,17 +908,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Failures teach.',
             result: ['“So do friends.” She laughs for the first time all week.'],
-            fx: { rel: 8, stress: -6 },
+            fx: { rel: 10, stress: -6 },
           },
           {
             label: 'Try a new angle.',
             result: ['You sketch a new design on a napkin. She frames it.'],
-            fx: { rel: 8, stat: { cre: 1 } },
+            fx: { rel: 10, stat: { cre: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Acceptance Letter',
         scene: [['Nora', 'I got in. Grad school. I wanted you to be the first to know.']],
         prompt: 'Nora is holding a very official envelope.',
@@ -974,7 +974,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Elevator Pitch',
         scene: [['Jack', 'Quick: pitch me your dream startup. Thirty seconds. Go.']],
         prompt: 'Jack taps a stopwatch.',
@@ -982,12 +982,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'A café for nappers.',
             result: ['“Brilliant. I will steal it.” He writes it down anyway.'],
-            fx: { rel: 6, stat: { cre: 1 } },
+            fx: { rel: 5, stat: { cre: 1 } },
           },
           {
             label: 'A study-buddy app.',
             result: ['“There are forty of those. Yours has a better name.”'],
-            fx: { rel: 6, stat: { int: 1 } },
+            fx: { rel: 5, stat: { int: 1 } },
           },
         ],
       },
@@ -1000,17 +1000,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Lend him your blazer.',
             result: ['It fits. Sort of. He looks like a very serious toddler.'],
-            fx: { rel: 8, stat: { cha: 1 } },
+            fx: { rel: 10, stat: { cha: 1 } },
           },
           {
             label: 'Practise the pitch together.',
             result: ['Three run-throughs. His voice stops shaking.'],
-            fx: { rel: 8, stress: -6 },
+            fx: { rel: 10, stress: -6 },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'First Customer',
         scene: [['Jack', 'We sold a sandwich! One. To a stranger. I framed the receipt.']],
         prompt: 'Jack holds up a framed receipt like a championship belt.',
@@ -1062,7 +1062,7 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
     ],
     beats: [
       {
-        at: 15,
+        at: 20,
         title: 'Floor Meeting',
         scene: [['Tessa', 'Floor meeting at nine. Snacks provided. Attendance is… strongly encouraged.']],
         prompt: 'Tessa waves a clipboard of sticky notes.',
@@ -1070,12 +1070,12 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'I will be there.',
             result: ['She hands you a snack box for being early.'],
-            fx: { items: { snack: 1 }, rel: 6 },
+            fx: { items: { snack: 1 }, rel: 5 },
           },
           {
             label: 'Help set up chairs.',
             result: ['Forty chairs later, you are the unofficial floor mascot.'],
-            fx: { rel: 6, stat: { sta: 1 } },
+            fx: { rel: 5, stat: { sta: 1 } },
           },
         ],
       },
@@ -1088,17 +1088,17 @@ export const NPCS_MORE: Record<Exclude<NpcId, 'maya' | 'kai' | 'zoe' | 'rin'>, N
           {
             label: 'Make a care package.',
             result: ['Cookies, a card, a plushie. Half the floor writes thank-you notes.'],
-            fx: { rel: 8, stress: -6 },
+            fx: { rel: 10, stress: -6 },
           },
           {
             label: 'Movie night!',
             result: ['Twenty students, one tiny projector, zero regrets.'],
-            fx: { rel: 8, stat: { cre: 1 } },
+            fx: { rel: 10, stat: { cre: 1 } },
           },
         ],
       },
       {
-        at: 70,
+        at: 60,
         title: 'Floor Legacy',
         scene: [
           ['Tessa', 'When I leave, the floor needs someone who remembers everyone’s name. I nominated you.'],

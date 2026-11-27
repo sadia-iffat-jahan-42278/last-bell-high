@@ -59,7 +59,7 @@ import { createCampus, type Campus } from './render/campus';
 import { Character, NPC_LOOKS, personLook, professorLook, randomLook, staffLook } from './render/characters';
 import { SH, part, setColor } from './render/parts';
 import { CLUB_COLOUR } from './render/clubhouse';
-import { PEOPLE, pickStudents, professorId } from './core/people';
+import { PEOPLE, pickStudents, professorId, relationPoints } from './core/people';
 import { floorVariant } from './render/departments';
 import {
   classKey,
@@ -1866,7 +1866,7 @@ export class Scene3D implements SceneHooks {
       }
       const f = s.friends[n.id];
       const beat = N.beats[f.story];
-      const ready = beat && f.rel >= beat.at;
+      const ready = beat && relationPoints(f.rel) >= beat.at;
       e.style.display = '';
       e.style.setProperty('--c', N.color);
       e.textContent = `${ready ? '❗' : f.talked === s.day ? '' : '💬'} ${N.emoji} ${N.name} · ${YEAR_NAMES[N.year - 1]}`;

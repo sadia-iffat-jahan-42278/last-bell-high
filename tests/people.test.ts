@@ -3,17 +3,20 @@ import { COURSES, DEPARTMENTS, NPCS } from '../src/core/data';
 import {
   FRIEND_PEOPLE,
   PEOPLE,
-  PERSONALITY_AT,
   PERSON_IDS,
   PROFESSORS,
   STAFF,
   STUDENTS,
   TONES,
-  interactionLevel,
   moodFor,
   pickStudents,
   professorId,
   studentsOf,
+  COLD_AT,
+  RELATION_CHANGE,
+  RELATION_LEVELS,
+  WARM_AT,
+  relationPoints,
   relationshipLabel,
   replyOptions,
 } from '../src/core/people';
@@ -123,25 +126,17 @@ describe('the fixed cast', () => {
   });
 });
 
-describe('interaction and relationship points', () => {
-  it('start at zero with everyone, with the personality hidden', () => {
+describe('relationship', () => {
+  it('starts neutral with everyone, as the only score', () => {
     const s = fresh();
     for (const id of PERSON_IDS) {
       const b = St.bondOf(s, id);
-      expect(b.interaction, id).toBe(0);
       expect(b.rel, id).toBe(0);
-      expect(St.knowsPersonality(s, id), id).toBe(false);
+      expect(Object.keys(b), id).not.toContain('interaction');
     }
   });
 
-  it('interaction only ever goes up', () => {
-    const s = fresh();
-    expect(St.addInteraction(s, 's_ben', 10)).toBe(10);
-    expect(St.addInteraction(s, 's_ben', -50)).toBe(0);
-    expect(St.bondOf(s, 's_ben').interaction).toBe(10);
-  });
-
-  it('relationship goes both ways and stays between -100 and +100', () => {
+  it('goes both ways and stays between -100 and +100', () => {
     const s = fresh();
     expect(St.addRel(s, 'p_zhao', -30)).toBe(-30);
     expect(St.bondOf(s, 'p_zhao').rel).toBe(-30);
@@ -149,25 +144,43 @@ describe('interaction and relationship points', () => {
     expect(St.bondOf(s, 'p_zhao').rel).toBe(-100);
     St.addRel(s, 'p_zhao', 900);
     expect(St.bondOf(s, 'p_zhao').rel).toBe(100);
-    St.addRel(s, 'maya', -12);
-    expect(s.friends.maya.rel).toBe(-12);
+    St.addRel(s, 'maya', -15);
+    expect(s.friends.maya.rel).toBe(-15);
   });
 
-  it('reveals the personality at the interaction threshold, however the conversations went', () => {
-    const s = fresh();
-    const id = 's_ivan'; // likes straight talk
-    let unlocks = 0;
-    for (let day = 0; day < 4; day++) {
-      s.day = day;
-      const out = St.converse(s, id, 'dismissive');
-      expect(out.interaction).toBe(10);
-      expect(out.relation).toBeLessThan(0);
-      if (out.unlocked) unlocks++;
-      expect(St.knowsPersonality(s, id)).toBe(St.bondOf(s, id).interaction >= PERSONALITY_AT);
+  it('only ever changes in multiples of 5', () => {
+    expect([0, 1, 4, 7.4, 7.5, 12, 12.5, 15, -1, -8, -12.5].map(St.relStep)).toEqual([
+      0, 5, 5, 5, 10, 10, 15, 15, -5, -10, -15,
+    ]);
+    // whatever the amount, the Charisma level and the perk
+    for (let cha = 1; cha <= 30; cha++) {
+      for (const perk of [false, true]) {
+        const s = fresh();
+        s.stats.cha = cha;
+        if (perk) s.perks.push('social');
+        for (const v of [1, 3, 5, 10, 15, 22.7, -4, -10, -20]) {
+          const change = St.addRel(s, 's_ben', v);
+          expect(Math.abs(change % St.REL_STEP), `cha ${cha} perk ${perk} value ${v}`).toBe(0);
+          expect(Math.abs(s.people.s_ben.rel % St.REL_STEP)).toBe(0);
+        }
+      }
     }
-    expect(unlocks).toBe(1);
-    expect(St.bondOf(s, id).rel).toBeLessThan(-30);
-    expect(St.bondOf(s, id).interaction).toBe(40);
+  });
+
+  it('is written in multiples of 5 for every reply and story choice', () => {
+    for (const v of Object.values(RELATION_CHANGE)) expect(Math.abs(v % St.REL_STEP)).toBe(0);
+    for (const [id, N] of Object.entries(NPCS)) {
+      for (const o of N.beats.flatMap((b) => b.options)) expect((o.fx.rel ?? 0) % St.REL_STEP, id).toBe(0);
+    }
+  });
+
+  it('moves odd scores from older saves to the nearest step', () => {
+    const old = JSON.parse(JSON.stringify(fresh()));
+    old.friends.maya.rel = 8.32;
+    old.friends.kai.rel = -12.5;
+    old.people = { s_ben: { rel: 2.08, talked: 1 } };
+    const back = St.migrateSave(old)!;
+    expect([back.friends.maya.rel, back.friends.kai.rel, back.people.s_ben.rel]).toEqual([10, -15, 0]);
   });
 
   it('makes the same reply please one person and annoy another', () => {
@@ -190,12 +203,54 @@ describe('interaction and relationship points', () => {
     }
   });
 
-  it('names the levels and bands', () => {
-    expect(interactionLevel(0).name).toBe('Stranger');
-    expect(interactionLevel(PERSONALITY_AT).name).toBe('Familiar');
-    expect(relationshipLabel(-80).name).toBe('Hostile');
-    expect(relationshipLabel(0).name).toBe('Neutral');
-    expect(relationshipLabel(90).name).toBe('Devoted');
+  it('has eleven levels, one every 20 points', () => {
+    expect(RELATION_LEVELS.map((l) => l.at)).toEqual([-100, -80, -60, -40, -20, 0, 20, 40, 60, 80, 100]);
+    expect(new Set(RELATION_LEVELS.map((l) => l.name)).size).toBe(11);
+  });
+
+  it('reaches each level on hitting its number, counting away from zero', () => {
+    const cases: [number, string][] = [
+      [-100, 'Nemesis'],
+      [-99, 'Hostile'],
+      [-80, 'Hostile'],
+      [-79, 'Resentful'],
+      [-60, 'Resentful'],
+      [-59, 'Annoyed'],
+      [-40, 'Annoyed'],
+      [-39, 'Wary'],
+      [-20, 'Wary'],
+      [-19, 'Neutral'],
+      [0, 'Neutral'],
+      [19, 'Neutral'],
+      [20, 'Friendly'],
+      [39, 'Friendly'],
+      [40, 'Trusted'],
+      [59, 'Trusted'],
+      [60, 'Close'],
+      [79, 'Close'],
+      [80, 'Loyal'],
+      [99, 'Loyal'],
+      [100, 'Devoted'],
+    ];
+    for (const [points, name] of cases) expect(relationshipLabel(points).name, String(points)).toBe(name);
+  });
+
+  it('judges levels on the rounded number the player sees', () => {
+    expect(relationPoints(19.6)).toBe(20);
+    expect(relationPoints(-19.5)).toBe(-20);
+    expect(relationshipLabel(19.6).name).toBe('Friendly');
+    expect(relationshipLabel(19.4).name).toBe('Neutral');
+    expect(relationshipLabel(-19.5).name).toBe('Wary');
+  });
+
+  it('lines the cut-offs and story scenes up with the levels', () => {
+    expect(relationshipLabel(WARM_AT).name).toBe('Friendly');
+    expect(relationshipLabel(COLD_AT).name).toBe('Wary');
+    for (const [id, N] of Object.entries(NPCS))
+      expect(
+        N.beats.map((b) => b.at),
+        id,
+      ).toEqual([20, 40, 60]);
   });
 
   it('survive saving, with gender and department', () => {
@@ -204,6 +259,17 @@ describe('interaction and relationship points', () => {
     const back = St.migrateSave(JSON.parse(JSON.stringify(s)))!;
     expect(back.gender).toBe('male');
     expect(back.major).toBe('eee');
+    expect(back.people.p_osei).toEqual(s.people.p_osei);
+  });
+
+  it('drop the removed interaction points from older saves', () => {
+    const s = fresh();
+    St.converse(s, 'p_osei', 'honest');
+    const old = JSON.parse(JSON.stringify(s));
+    old.friends.maya.interaction = 40;
+    old.people.p_osei.interaction = 10;
+    const back = St.migrateSave(old)!;
+    expect(back.friends.maya).toEqual(s.friends.maya);
     expect(back.people.p_osei).toEqual(s.people.p_osei);
   });
 
